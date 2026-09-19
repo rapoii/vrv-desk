@@ -8,18 +8,23 @@ import '../widgets/shortcut_bar.dart';
 typedef WebSocketConnector = Future<WebSocket> Function(String url);
 
 class MirrorView extends StatefulWidget {
-  final String hostIp;
+  final String? hostIp;
   final int port;
   final String? initialPin;
+  final String? signalingUrl;
+  final String? targetDeviceId;
   final WebSocketConnector? webSocketConnector;
 
   const MirrorView({
     super.key,
-    required this.hostIp,
+    this.hostIp,
     this.port = 53211,
     this.initialPin,
+    this.signalingUrl,
+    this.targetDeviceId,
     this.webSocketConnector,
-  });
+  }) : assert(hostIp != null || (signalingUrl != null && targetDeviceId != null),
+            'Must provide either hostIp or both signalingUrl and targetDeviceId');
 
   @override
   State<MirrorView> createState() => _MirrorViewState();
@@ -49,6 +54,9 @@ class _MirrorViewState extends State<MirrorView> {
   }
 
   Future<void> _connect() async {
+    final isRemote = widget.targetDeviceId != null;
+    final targetLabel = isRemote ? 'Device ID ${widget.targetDeviceId}' : '${widget.hostIp}:${widget.port}';
+
     setState(() {
       _isConnected = false;
       _isAuthenticated = false;
@@ -56,25 +64,44 @@ class _MirrorViewState extends State<MirrorView> {
       _authError = null;
       _remainingAttempts = 3;
       _hasSentInitialPin = false;
-      _statusMessage = 'Connecting to ${widget.hostIp}:${widget.port}...';
+      _statusMessage = 'Connecting to $targetLabel...';
     });
 
     try {
       final connector = widget.webSocketConnector ?? WebSocket.connect;
+      final connectUrl = isRemote
+          ? widget.signalingUrl!
+          : 'ws://${widget.hostIp}:${widget.port}';
+
       final ws = await connector(
-        'ws://${widget.hostIp}:${widget.port}',
+        connectUrl,
       ).timeout(const Duration(seconds: 5));
 
       _socket = ws;
-      setState(() {
-        _isConnected = true;
-        _statusMessage = 'Connected, waiting for host handshake...';
-      });
+
+      if (isRemote) {
+        setState(() {
+          _statusMessage = 'Connecting via signaling to Device ${widget.targetDeviceId}...';
+        });
+        // Send connect_request with target_id
+        final connectReq = jsonEncode({
+          'type': 'connect_request',
+          'target_id': widget.targetDeviceId,
+          'client_name': 'Flutter-Client',
+        });
+        ws.add(connectReq);
+      } else {
+        setState(() {
+          _isConnected = true;
+          _statusMessage = 'Connected, waiting for host handshake...';
+        });
+      }
 
       ws.listen(
         (data) {
           if (data is List<int>) {
             setState(() {
+              _isConnected = true;
               _currentFrame = Uint8List.fromList(data);
               _frameCount++;
             });
@@ -131,13 +158,16 @@ class _MirrorViewState extends State<MirrorView> {
 
   void _showPinDialog() {
     if (!mounted || _dialogContext != null) return;
+    final label = widget.targetDeviceId != null
+        ? 'Device ${widget.targetDeviceId}'
+        : 'Host PC (${widget.hostIp})';
     showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (dContext) {
         _dialogContext = dContext;
         return PinDialog(
-          deviceName: 'Host PC (${widget.hostIp})',
+          deviceName: label,
           onSubmitted: (enteredPin) {
             _sendPin(enteredPin);
           },
@@ -185,7 +215,26 @@ class _MirrorViewState extends State<MirrorView> {
       final json = jsonDecode(message);
       if (json is Map<String, dynamic>) {
         final type = json['type'];
-        if (type == 'auth_required') {
+        if (type == 'connect_error') {
+          final reason = json['reason'] as String? ?? 'Signaling connection failed';
+          setState(() {
+            _isConnected = false;
+            _statusMessage = 'Signaling error: $reason';
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Remote Connect Error: $reason'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } else if (type == 'auth_required') {
+          setState(() {
+            _isConnected = true;
+          });
           _handleAuthRequired();
         } else if (type == 'auth_ok') {
           _dismissPinDialog();

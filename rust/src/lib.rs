@@ -6,6 +6,7 @@ pub mod protocol;
 pub mod transport;
 pub mod gdi_capture;
 pub mod auth;
+pub mod stun;
 
 #[flutter_rust_bridge::frb(init)]
 pub fn init_app() {

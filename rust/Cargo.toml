@@ -10,6 +10,10 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 name = "vrv_host"
 path = "src/bin/vrv_host.rs"
 
+[[bin]]
+name = "vrv_signal"
+path = "src/bin/vrv_signal.rs"
+
 
 [dependencies]
 flutter_rust_bridge = "=2.0.0"

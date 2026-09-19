@@ -37,14 +37,14 @@ impl AuthGatekeeper {
     where
         S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
     {
-        // 1. Send auth_required message
-        let auth_req = AuthMessage::AuthRequired {
-            host_name: host_name.to_string(),
-            version: "0.4.0".to_string(),
-        };
-        ws_sender
-            .send(Message::Text(serde_json::to_string(&auth_req)?.into()))
-            .await?;
+    // 1. Send auth_required message
+    let auth_req = AuthMessage::AuthRequired {
+        host_name: host_name.to_string(),
+        version: "0.4.0".to_string(),
+    };
+    ws_sender
+        .send(Message::Text(serde_json::to_string(&auth_req)?.into()))
+        .await?;
 
         // 2. Auth loop: expect auth_verify, up to 3 attempts, 20s timeout per message
         let mut remaining_attempts: u32 = 3;

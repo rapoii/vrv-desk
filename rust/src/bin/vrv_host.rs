@@ -4,17 +4,20 @@ use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
+use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
 use mirror_core::auth::AuthGatekeeper;
 use mirror_core::gdi_capture::ScreenCapturer;
+use mirror_core::identity::DeviceIdentity;
 use mirror_core::platform::windows_input::{
     get_clipboard_sequence_number, get_clipboard_text, inject_input, inject_shortcut,
     inject_unicode_text, set_clipboard_text,
 };
 use mirror_core::protocol::{InputEvent, MouseButton};
+use mirror_core::stun::{query_stun, DEFAULT_STUN_SERVER};
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type")]
@@ -41,18 +44,43 @@ enum ClientInput {
     ClipboardText { text: String },
 }
 
-fn parse_pin_arg() -> Option<String> {
+fn parse_cli_args() -> (Option<String>, Option<String>, Option<String>) {
+    let mut pin = None;
+    let mut device_id = None;
+    let mut signal_url = None;
+
     let args: Vec<String> = env::args().collect();
-    for i in 1..args.len() {
-        if args[i] == "--pin" && i + 1 < args.len() {
-            return Some(args[i + 1].clone());
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--pin" => {
+                if i + 1 < args.len() {
+                    pin = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--device-id" => {
+                if i + 1 < args.len() {
+                    device_id = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--signal" => {
+                if i + 1 < args.len() {
+                    signal_url = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            _ => {}
         }
+        i += 1;
     }
-    None
+
+    (pin, device_id, signal_url)
 }
 
-fn get_or_generate_pin() -> String {
-    if let Some(pin) = parse_pin_arg() {
+fn get_or_generate_pin(cli_pin: Option<String>) -> String {
+    if let Some(pin) = cli_pin {
         return pin;
     }
     if let Ok(pin) = env::var("VRV_PIN") {
@@ -65,11 +93,25 @@ fn get_or_generate_pin() -> String {
     format!("{:06}", pin_num)
 }
 
-fn format_pin_display(pin: &str) -> String {
-    if pin.len() == 6 {
-        format!("{} {}", &pin[..3], &pin[3..])
+fn get_or_generate_device_id(cli_device_id: Option<String>) -> String {
+    if let Some(id) = cli_device_id {
+        return id.replace(' ', "");
+    }
+    if let Ok(id) = env::var("VRV_DEVICE_ID") {
+        if !id.trim().is_empty() {
+            return id.trim().replace(' ', "");
+        }
+    }
+    let identity = DeviceIdentity::generate();
+    identity.device_id()
+}
+
+fn format_six_digit_display(code: &str) -> String {
+    let clean = code.replace(' ', "");
+    if clean.len() == 6 {
+        format!("{} {}", &clean[..3], &clean[3..])
     } else {
-        pin.to_string()
+        code.to_string()
     }
 }
 
@@ -81,18 +123,34 @@ fn get_host_name() -> String {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let pin = Arc::new(get_or_generate_pin());
+    let (cli_pin, cli_device_id, cli_signal_url) = parse_cli_args();
+    let pin = Arc::new(get_or_generate_pin(cli_pin));
+    let device_id = get_or_generate_device_id(cli_device_id);
     let host_name = get_host_name();
+
+    // Query STUN endpoint (gracefully fallback if offline)
+    let stun_endpoint = match query_stun(DEFAULT_STUN_SERVER).await {
+        Ok(addr) => Some(addr.to_string()),
+        Err(_) => None,
+    };
+    let stun_display = stun_endpoint
+        .as_deref()
+        .unwrap_or("Unavailable / Local Only");
+
+    let signal_url = cli_signal_url
+        .or_else(|| env::var("VRV_SIGNAL_URL").ok())
+        .unwrap_or_else(|| "ws://127.0.0.1:53212".to_string());
+
     let addr: SocketAddr = "0.0.0.0:53211".parse()?;
     let listener = TcpListener::bind(&addr).await?;
 
     println!("=================================================");
-    println!("🔐 Host Ready!");
-    println!("📱 Session PIN: {}", format_pin_display(&pin));
-    println!("🌐 Listening on ws://0.0.0.0:53211");
+    println!("🌐 VrV Desk Remote Host Ready!");
+    println!("📱 Device ID:   {}", format_six_digit_display(&device_id));
+    println!("🔐 Session PIN: {}", format_six_digit_display(&pin));
+    println!("📡 STUN Public: {}", stun_display);
+    println!("📶 Local LAN:   ws://{}", addr);
     println!("=================================================");
-    println!("⚡ VrV Desk Host Engine running on {}", addr);
-    println!("Ready for Android & remote streaming connections...");
 
     let screen_w = unsafe {
         windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics(
@@ -106,34 +164,143 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     println!("🖥️ Primary Screen detected: {}x{}", screen_w, screen_h);
 
-    while let Ok((stream, peer_addr)) = listener.accept().await {
-        println!("🔗 New client connected from: {}", peer_addr);
+    // Spawn background task for Remote Signaling Broker Registration & Bridging
+    let signal_pin = pin.clone();
+    let signal_device_id = device_id.clone();
+    let signal_host_name = host_name.clone();
+    let signal_stun = stun_endpoint.clone();
+    tokio::spawn(async move {
+        run_signal_client(
+            signal_url,
+            signal_device_id,
+            signal_host_name,
+            signal_stun,
+            signal_pin,
+        )
+        .await;
+    });
 
+    // Accept local direct LAN connections
+    while let Ok((stream, peer_addr)) = listener.accept().await {
+        println!("🔗 New local client connected from: {}", peer_addr);
         let _ = stream.set_nodelay(true);
 
         let pin_clone = pin.clone();
         let host_name_clone = host_name.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_connection(stream, peer_addr, pin_clone, host_name_clone).await {
-                eprintln!("Connection error with {}: {:?}", peer_addr, e);
+            let ws_stream = match accept_async(stream).await {
+                Ok(ws) => ws,
+                Err(e) => {
+                    eprintln!("Local WebSocket handshake failed: {:?}", e);
+                    return;
+                }
+            };
+            if let Err(e) = handle_streaming_session(ws_stream, peer_addr.to_string(), pin_clone, host_name_clone).await {
+                eprintln!("Session error with {}: {:?}", peer_addr, e);
             }
-            println!("🔌 Client {} disconnected.", peer_addr);
+            println!("🔌 Local client {} disconnected.", peer_addr);
         });
     }
 
     Ok(())
 }
 
-async fn handle_connection(
-    stream: TcpStream,
-    peer_addr: SocketAddr,
+/// Maintain persistent signaling connection to broker and serve remote client sessions
+async fn run_signal_client(
+    signal_url: String,
+    device_id: String,
+    host_name: String,
+    stun_endpoint: Option<String>,
+    pin: Arc<String>,
+) {
+    loop {
+        println!("[SignalClient] Connecting to signaling broker at {}...", signal_url);
+        match connect_async(&signal_url).await {
+            Ok((mut ws_stream, _)) => {
+                println!("[SignalClient] Connected! Registering device ID: {}", device_id);
+
+                let reg_msg = serde_json::json!({
+                    "type": "register_host",
+                    "device_id": device_id,
+                    "name": host_name,
+                    "stun_endpoint": stun_endpoint
+                });
+
+                if let Err(e) = ws_stream.send(Message::Text(reg_msg.to_string().into())).await {
+                    eprintln!("[SignalClient] Registration send failed: {:?}", e);
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+                    continue;
+                }
+
+                // Wait for register_ok confirmation
+                let reg_ok = match ws_stream.next().await {
+                    Some(Ok(Message::Text(t))) => {
+                        let parsed: serde_json::Value = serde_json::from_str(&t).unwrap_or_default();
+                        parsed.get("type").and_then(|v| v.as_str()) == Some("register_ok")
+                    }
+                    _ => false,
+                };
+
+                if !reg_ok {
+                    eprintln!("[SignalClient] Failed to receive register_ok from signaling broker");
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+                    continue;
+                }
+
+                println!("✅ [SignalClient] Registered successfully with broker as Device ID: {}", device_id);
+
+                // Wait for the broker to bridge an incoming client connection.
+                // The broker sends a rendezvous notification: {"type": "client_connected"}
+                let peer_connected = match ws_stream.next().await {
+                    Some(Ok(Message::Text(t))) => {
+                        let parsed: serde_json::Value = serde_json::from_str(&t).unwrap_or_default();
+                        parsed.get("type").and_then(|v| v.as_str()) == Some("client_connected")
+                    }
+                    _ => false,
+                };
+
+                if !peer_connected {
+                    eprintln!("[SignalClient] Connection closed before client connected");
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    continue;
+                }
+
+                println!("🚀 [SignalClient] Remote client connected! Initiating streaming session...");
+
+                // When a remote client connects, the signaling broker bridges this WebSocket connection directly!
+                // We now execute the standard streaming session (Auth -> JPEG frames & Inputs) over ws_stream.
+                let remote_peer_desc = format!("Remote-Peer via Signal ({})", signal_url);
+                if let Err(e) = handle_streaming_session(
+                    ws_stream,
+                    remote_peer_desc,
+                    pin.clone(),
+                    host_name.clone(),
+                )
+                .await
+                {
+                    eprintln!("[SignalClient] Remote session ended or failed: {:?}", e);
+                }
+
+                println!("[SignalClient] Remote session closed. Re-registering with broker in 2s...");
+            }
+            Err(e) => {
+                eprintln!("[SignalClient] Cannot connect to signaling broker: {:?}. Retrying in 5s...", e);
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+        }
+    }
+}
+
+/// Generic streaming session handler that works over both direct LAN and signaled Remote connections
+pub async fn handle_streaming_session<S>(
+    ws_stream: tokio_tungstenite::WebSocketStream<S>,
+    peer_desc: String,
     pin: Arc<String>,
     host_name: String,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    println!("🤝 Starting WebSocket handshake...");
-    let ws_stream = accept_async(stream).await?;
-    println!("✅ WebSocket handshake completed!");
-
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
     // Authenticate client with PIN gatekeeper before starting capturer or streaming tasks
@@ -145,11 +312,11 @@ async fn handle_connection(
     )
     .await?;
 
-    println!("✅ Client {} authenticated successfully!", peer_addr);
+    println!("✅ Peer {} authenticated successfully!", peer_desc);
 
     // Initialize capturer only after successful authentication
     let capturer = ScreenCapturer::new().map_err(|e| format!("Capturer init failed: {}", e))?;
-    println!("✅ Screen capturer initialized!");
+    println!("✅ Screen capturer initialized for session!");
     let screen_w = capturer.screen_width;
     let screen_h = capturer.screen_height;
 
@@ -219,7 +386,6 @@ async fn handle_connection(
             match msg {
                 Ok(Message::Text(text)) => {
                     if let Ok(input) = serde_json::from_str::<ClientInput>(&text) {
-                        println!("📥 Received input event: {:?}", input);
                         match input {
                             ClientInput::MouseMove { x, y } => {
                                 let _ = inject_input(

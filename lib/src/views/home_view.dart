@@ -8,13 +8,20 @@ class HomeView extends StatefulWidget {
   final String myDeviceId;
   final List<DiscoveredDevice> initialDevices;
   final void Function(DiscoveredDevice device, String pin)? onConnect;
+  final String signalingUrl;
 
   const HomeView({
     super.key,
     required this.myDeviceId,
     this.initialDevices = const [],
     this.onConnect,
+    this.signalingUrl = 'ws://10.0.2.2:53212',
   });
+
+  static bool is6DigitDeviceId(String input) {
+    final cleaned = input.replaceAll(' ', '');
+    return RegExp(r'^\d{6}$').hasMatch(cleaned);
+  }
 
   @override
   State<HomeView> createState() => _HomeViewState();
@@ -23,11 +30,18 @@ class HomeView extends StatefulWidget {
 class _HomeViewState extends State<HomeView> {
   late List<DiscoveredDevice> _devices;
   bool _isCopied = false;
+  final TextEditingController _quickConnectController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _devices = List.from(widget.initialDevices);
+  }
+
+  @override
+  void dispose() {
+    _quickConnectController.dispose();
+    super.dispose();
   }
 
   @override
@@ -75,8 +89,38 @@ class _HomeViewState extends State<HomeView> {
     );
   }
 
+  void _handleConnectInput(String input, String pin) {
+    final clean = input.trim();
+    if (clean.isEmpty) return;
+
+    final cleanPin = pin.trim().isNotEmpty ? pin.trim() : null;
+
+    if (HomeView.is6DigitDeviceId(clean)) {
+      final targetId = clean.replaceAll(' ', '');
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => MirrorView(
+            signalingUrl: widget.signalingUrl,
+            targetDeviceId: targetId,
+            initialPin: cleanPin,
+          ),
+        ),
+      );
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => MirrorView(
+            hostIp: clean,
+            port: 53211,
+            initialPin: cleanPin,
+          ),
+        ),
+      );
+    }
+  }
+
   void _showDirectIpDialog() {
-    final ipController = TextEditingController(text: '10.0.2.2');
+    final inputController = TextEditingController();
     final pinController = TextEditingController();
     showDialog(
       context: context,
@@ -87,19 +131,19 @@ class _HomeViewState extends State<HomeView> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Enter the Host PC IP address running VrV Desk:',
+              'Enter 6-digit Device ID (e.g. 849 201) or Host IP address:',
               style: TextStyle(fontSize: 13, color: Colors.grey),
             ),
             const SizedBox(height: 12),
             TextField(
               key: const Key('direct_ip_field'),
-              controller: ipController,
+              controller: inputController,
               decoration: const InputDecoration(
-                labelText: 'Host IP Address',
+                labelText: 'Device ID or Host IP',
                 border: OutlineInputBorder(),
-                hintText: '10.0.2.2 or 192.168.x.x',
+                hintText: '849 201 or 192.168.x.x',
               ),
-              keyboardType: TextInputType.url,
+              keyboardType: TextInputType.text,
             ),
             const SizedBox(height: 12),
             TextField(
@@ -123,19 +167,11 @@ class _HomeViewState extends State<HomeView> {
           ElevatedButton(
             key: const Key('dialog_connect_button'),
             onPressed: () {
-              final ip = ipController.text.trim();
+              final text = inputController.text.trim();
               final pin = pinController.text.trim();
-              if (ip.isNotEmpty) {
+              if (text.isNotEmpty) {
                 Navigator.of(dialogContext).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => MirrorView(
-                      hostIp: ip,
-                      port: 53211,
-                      initialPin: pin.isNotEmpty ? pin : null,
-                    ),
-                  ),
-                );
+                _handleConnectInput(text, pin);
               }
             },
             child: const Text('Connect'),
@@ -198,6 +234,63 @@ class _HomeViewState extends State<HomeView> {
                       onPressed: _copyDeviceId,
                       icon: Icon(_isCopied ? Icons.check : Icons.copy),
                       label: Text(_isCopied ? 'Copied' : 'Copy ID'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.bolt,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Quick Connect',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Connect to any remote PC using 6-digit Device ID or local IP address:',
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      key: const Key('quick_connect_field'),
+                      controller: _quickConnectController,
+                      decoration: const InputDecoration(
+                        labelText: 'Remote Device ID or IP',
+                        border: OutlineInputBorder(),
+                        hintText: 'e.g. 849 201 or 192.168.1.100',
+                        prefixIcon: Icon(Icons.cast_connected),
+                      ),
+                      keyboardType: TextInputType.text,
+                    ),
+                    const SizedBox(height: 10),
+                    ElevatedButton.icon(
+                      key: const Key('quick_connect_button'),
+                      onPressed: () {
+                        _handleConnectInput(_quickConnectController.text, '');
+                      },
+                      icon: const Icon(Icons.arrow_forward),
+                      label: const Text('Connect to Device'),
                     ),
                   ],
                 ),
