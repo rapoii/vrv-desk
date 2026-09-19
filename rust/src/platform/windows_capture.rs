@@ -1,21 +1,433 @@
+#[cfg(windows)]
+use windows::core::ComInterface;
+#[cfg(windows)]
+use windows::Win32::Graphics::Direct3D::*;
+#[cfg(windows)]
+use windows::Win32::Graphics::Direct3D11::*;
+#[cfg(windows)]
+use windows::Win32::Graphics::Dxgi::Common::*;
+#[cfg(windows)]
+use windows::Win32::Graphics::Dxgi::*;
+
+use image::codecs::jpeg::JpegEncoder;
+use image::{ImageEncoder, RgbaImage};
+use std::io::Cursor;
+
+#[cfg(windows)]
 pub struct DxgiCapturer {
+    pub screen_width: u32,
+    pub screen_height: u32,
+    pub width: u32,
+    pub height: u32,
+    device: ID3D11Device,
+    context: ID3D11DeviceContext,
+    duplication: IDXGIOutputDuplication,
+    staging_texture: ID3D11Texture2D,
+}
+
+#[cfg(windows)]
+impl DxgiCapturer {
+    pub fn new() -> Result<Self, String> {
+        unsafe {
+            let mut device: Option<ID3D11Device> = None;
+            let mut context: Option<ID3D11DeviceContext> = None;
+            let mut feature_level = D3D_FEATURE_LEVEL_11_0;
+
+            let feature_levels = [
+                D3D_FEATURE_LEVEL_11_1,
+                D3D_FEATURE_LEVEL_11_0,
+                D3D_FEATURE_LEVEL_10_1,
+                D3D_FEATURE_LEVEL_10_0,
+            ];
+
+            // 1. Create Direct3D 11 Device and Context with BGRA support
+            let hr = D3D11CreateDevice(
+                None,
+                D3D_DRIVER_TYPE_HARDWARE,
+                None,
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                Some(&feature_levels),
+                D3D11_SDK_VERSION,
+                Some(&mut device),
+                Some(&mut feature_level),
+                Some(&mut context),
+            );
+
+            if hr.is_err() || device.is_none() || context.is_none() {
+                return Err(format!("D3D11CreateDevice failed: {:?}", hr));
+            }
+
+            let device = device.unwrap();
+            let context = context.unwrap();
+
+            // 2. Query IDXGIDevice -> IDXGIAdapter -> IDXGIOutput -> IDXGIOutput1 -> DuplicateOutput
+            let dxgi_device: IDXGIDevice = device
+                .cast()
+                .map_err(|e| format!("Failed to cast ID3D11Device to IDXGIDevice: {:?}", e))?;
+
+            let adapter = dxgi_device
+                .GetAdapter()
+                .map_err(|e| format!("GetAdapter failed: {:?}", e))?;
+
+            let output = adapter
+                .EnumOutputs(0)
+                .map_err(|e| format!("EnumOutputs(0) failed: {:?}", e))?;
+
+            let output1: IDXGIOutput1 = output
+                .cast()
+                .map_err(|e| format!("Failed to cast IDXGIOutput to IDXGIOutput1: {:?}", e))?;
+
+            let mut output_desc = DXGI_OUTPUT_DESC::default();
+            output
+                .GetDesc(&mut output_desc)
+                .map_err(|e| format!("GetDesc failed: {:?}", e))?;
+
+            let width = (output_desc.DesktopCoordinates.right - output_desc.DesktopCoordinates.left)
+                .abs() as u32;
+            let height = (output_desc.DesktopCoordinates.bottom
+                - output_desc.DesktopCoordinates.top)
+                .abs() as u32;
+
+            if width == 0 || height == 0 {
+                return Err(format!("Invalid desktop dimensions: {}x{}", width, height));
+            }
+
+            let duplication = output1
+                .DuplicateOutput(&device)
+                .map_err(|e| format!("DuplicateOutput failed: {:?}", e))?;
+
+            // 3. Create Staging Texture in CPU accessible memory
+            let staging_desc = D3D11_TEXTURE2D_DESC {
+                Width: width,
+                Height: height,
+                MipLevels: 1,
+                ArraySize: 1,
+                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                SampleDesc: DXGI_SAMPLE_DESC {
+                    Count: 1,
+                    Quality: 0,
+                },
+                Usage: D3D11_USAGE_STAGING,
+                BindFlags: 0,
+                CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+                MiscFlags: 0,
+            };
+
+            let mut staging_texture: Option<ID3D11Texture2D> = None;
+            device
+                .CreateTexture2D(&staging_desc, None, Some(&mut staging_texture))
+                .map_err(|e| format!("CreateTexture2D for staging texture failed: {:?}", e))?;
+
+            let staging_texture = staging_texture
+                .ok_or_else(|| "Staging texture was None after creation".to_string())?;
+
+            Ok(Self {
+                screen_width: width,
+                screen_height: height,
+                width,
+                height,
+                device,
+                context,
+                duplication,
+                staging_texture,
+            })
+        }
+    }
+
+    /// Reinitialize the DXGI output duplication (e.g. after DXGI_ERROR_ACCESS_LOST)
+    pub fn reinitialize(&mut self) -> Result<(), String> {
+        unsafe {
+            let dxgi_device: IDXGIDevice = self
+                .device
+                .cast()
+                .map_err(|e| format!("Failed to cast ID3D11Device to IDXGIDevice: {:?}", e))?;
+
+            let adapter = dxgi_device
+                .GetAdapter()
+                .map_err(|e| format!("GetAdapter failed: {:?}", e))?;
+
+            let output = adapter
+                .EnumOutputs(0)
+                .map_err(|e| format!("EnumOutputs(0) failed: {:?}", e))?;
+
+            let output1: IDXGIOutput1 = output
+                .cast()
+                .map_err(|e| format!("Failed to cast IDXGIOutput to IDXGIOutput1: {:?}", e))?;
+
+            let duplication = output1
+                .DuplicateOutput(&self.device)
+                .map_err(|e| format!("DuplicateOutput re-init failed: {:?}", e))?;
+
+            self.duplication = duplication;
+            Ok(())
+        }
+    }
+
+    pub fn acquire_next_frame(
+        &mut self,
+        timeout_ms: u32,
+    ) -> Result<Option<Vec<u8>>, String> {
+        self.capture_jpeg(timeout_ms, 75, self.screen_width)
+    }
+
+    /// Acquire the next frame from GPU, map to CPU, convert BGRA -> RGBA/JPEG.
+    /// Returns Ok(None) if timeout elapsed without screen update (DXGI_ERROR_WAIT_TIMEOUT).
+    pub fn capture_jpeg(
+        &mut self,
+        timeout_ms: u32,
+        quality: u8,
+        target_width: u32,
+    ) -> Result<Option<Vec<u8>>, String> {
+        unsafe {
+            let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
+            let mut desktop_resource: Option<IDXGIResource> = None;
+
+            let hr = self.duplication.AcquireNextFrame(
+                timeout_ms,
+                &mut frame_info,
+                &mut desktop_resource,
+            );
+
+            if let Err(e) = hr {
+                if e.code() == DXGI_ERROR_WAIT_TIMEOUT {
+                    return Ok(None);
+                }
+                if e.code() == DXGI_ERROR_ACCESS_LOST {
+                    eprintln!("⚠️ DXGI Output Duplication access lost, reinitializing...");
+                    self.reinitialize()?;
+                    return Ok(None);
+                }
+                return Err(format!("AcquireNextFrame failed: {:?}", e));
+            }
+
+            let desktop_resource = match desktop_resource {
+                Some(r) => r,
+                None => {
+                    let _ = self.duplication.ReleaseFrame();
+                    return Ok(None);
+                }
+            };
+
+            let gpu_texture: ID3D11Texture2D = match desktop_resource.cast() {
+                Ok(t) => t,
+                Err(e) => {
+                    let _ = self.duplication.ReleaseFrame();
+                    return Err(format!(
+                        "Failed to cast IDXGIResource to ID3D11Texture2D: {:?}",
+                        e
+                    ));
+                }
+            };
+
+            // Copy GPU desktop texture to CPU-readable staging texture
+            self.context
+                .CopyResource(&self.staging_texture, &gpu_texture);
+
+            // Map staging texture for CPU read
+            let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+            let map_res = self.context.Map(
+                &self.staging_texture,
+                0,
+                D3D11_MAP_READ,
+                0,
+                Some(&mut mapped),
+            );
+
+            if let Err(e) = map_res {
+                let _ = self.duplication.ReleaseFrame();
+                return Err(format!("Map staging texture failed: {:?}", e));
+            }
+
+            let width = self.screen_width;
+            let height = self.screen_height;
+            let row_pitch = mapped.RowPitch as usize;
+            let src_slice =
+                std::slice::from_raw_parts(mapped.pData as *const u8, row_pitch * height as usize);
+
+            // Convert BGRA to RGBA row by row
+            let mut raw_pixels = vec![0u8; (width * height * 4) as usize];
+            for y in 0..height as usize {
+                let src_row = &src_slice[y * row_pitch..(y * row_pitch + (width as usize * 4))];
+                let dst_row =
+                    &mut raw_pixels[y * (width as usize * 4)..(y + 1) * (width as usize * 4)];
+                for (src_px, dst_px) in src_row.chunks_exact(4).zip(dst_row.chunks_exact_mut(4)) {
+                    // src is BGRA -> dst is RGBA
+                    dst_px[0] = src_px[2]; // R
+                    dst_px[1] = src_px[1]; // G
+                    dst_px[2] = src_px[0]; // B
+                    dst_px[3] = src_px[3]; // A
+                }
+            }
+
+            // Unmap staging texture and release frame immediately to unblock GPU
+            self.context.Unmap(&self.staging_texture, 0);
+            let _ = self.duplication.ReleaseFrame();
+
+            // Calculate scaled dimensions if target_width is requested and smaller than source
+            let (final_w, final_h) = if width > target_width && target_width > 0 {
+                let scale = target_width as f32 / width as f32;
+                (target_width, (height as f32 * scale) as u32)
+            } else {
+                (width, height)
+            };
+
+            let img = RgbaImage::from_raw(width, height, raw_pixels)
+                .ok_or_else(|| "Failed to construct RgbaImage from DXGI buffer".to_string())?;
+
+            let final_img = if final_w != width || final_h != height {
+                image::imageops::resize(
+                    &img,
+                    final_w,
+                    final_h,
+                    image::imageops::FilterType::Triangle,
+                )
+            } else {
+                img
+            };
+
+            let rgb_img = image::DynamicImage::ImageRgba8(final_img).to_rgb8();
+            let mut buffer = Cursor::new(Vec::with_capacity((final_w * final_h) as usize / 4));
+            let encoder = JpegEncoder::new_with_quality(&mut buffer, quality);
+            encoder
+                .write_image(
+                    rgb_img.as_raw(),
+                    final_w,
+                    final_h,
+                    image::ExtendedColorType::Rgb8,
+                )
+                .map_err(|e| format!("JPEG encode error: {:?}", e))?;
+
+            Ok(Some(buffer.into_inner()))
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub struct DxgiCapturer {
+    pub screen_width: u32,
+    pub screen_height: u32,
     pub width: u32,
     pub height: u32,
 }
 
+#[cfg(not(windows))]
 impl DxgiCapturer {
-    pub fn new() -> std::result::Result<Self, String> {
-        Ok(Self {
-            width: 1920,
-            height: 1080,
-        })
+    pub fn new() -> Result<Self, String> {
+        Err("DXGI is only supported on Windows".to_string())
     }
 
     pub fn acquire_next_frame(
         &mut self,
         _timeout_ms: u32,
-    ) -> std::result::Result<Option<Vec<u8>>, String> {
-        // Basic stub/initialization for frame capture
-        Ok(None)
+    ) -> Result<Option<Vec<u8>>, String> {
+        Err("DXGI is only supported on Windows".to_string())
+    }
+
+    pub fn capture_jpeg(
+        &mut self,
+        _timeout_ms: u32,
+        _quality: u8,
+        _target_width: u32,
+    ) -> Result<Option<Vec<u8>>, String> {
+        Err("DXGI is only supported on Windows".to_string())
+    }
+}
+
+/// Resilient screen capturer combining hardware DXGI Desktop Duplication with automatic GDI fallback
+pub struct HybridScreenCapturer {
+    dxgi: Option<DxgiCapturer>,
+    gdi: Option<crate::gdi_capture::ScreenCapturer>,
+    is_dxgi: bool,
+    width: u32,
+    height: u32,
+}
+
+impl HybridScreenCapturer {
+    pub fn new() -> Result<Self, String> {
+        #[cfg(windows)]
+        {
+            match DxgiCapturer::new() {
+                Ok(dxgi) => {
+                    let w = dxgi.screen_width;
+                    let h = dxgi.screen_height;
+                    println!(
+                        "🖥️ Initialized DirectX 11 DXGI GPU capture engine ({}x{})",
+                        w, h
+                    );
+                    Ok(Self {
+                        dxgi: Some(dxgi),
+                        gdi: None,
+                        is_dxgi: true,
+                        width: w,
+                        height: h,
+                    })
+                }
+                Err(e) => {
+                    println!("⚠️ DXGI unavailable ({}), falling back to GDI BitBlt", e);
+                    let gdi = crate::gdi_capture::ScreenCapturer::new()?;
+                    let w = gdi.screen_width as u32;
+                    let h = gdi.screen_height as u32;
+                    println!("🖥️ Initialized GDI BitBlt capture engine ({}x{})", w, h);
+                    Ok(Self {
+                        dxgi: None,
+                        gdi: Some(gdi),
+                        is_dxgi: false,
+                        width: w,
+                        height: h,
+                    })
+                }
+            }
+        }
+
+        #[cfg(not(windows))]
+        {
+            Err("Unsupported platform for screen capture".to_string())
+        }
+    }
+
+    pub fn screen_width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn screen_height(&self) -> u32 {
+        self.height
+    }
+
+    pub fn is_dxgi(&self) -> bool {
+        self.is_dxgi
+    }
+
+    pub fn capture_jpeg(
+        &mut self,
+        timeout_ms: u32,
+        quality: u8,
+        target_width: u32,
+    ) -> Result<Option<Vec<u8>>, String> {
+        if self.is_dxgi {
+            if let Some(ref mut dxgi) = self.dxgi {
+                match dxgi.capture_jpeg(timeout_ms, quality, target_width) {
+                    Ok(res) => return Ok(res),
+                    Err(e) => {
+                        eprintln!("⚠️ DXGI capture error: {}, falling back to GDI engine", e);
+                        self.is_dxgi = false;
+                        self.dxgi = None;
+                        let gdi = crate::gdi_capture::ScreenCapturer::new()?;
+                        self.gdi = Some(gdi);
+                    }
+                }
+            }
+        }
+
+        // Fallback or primary GDI execution
+        if let Some(ref gdi) = self.gdi {
+            let jpeg = gdi.capture_jpeg(quality, target_width)?;
+            return Ok(Some(jpeg));
+        }
+
+        // Try initializing GDI if neither was present
+        let gdi = crate::gdi_capture::ScreenCapturer::new()?;
+        let jpeg = gdi.capture_jpeg(quality, target_width)?;
+        self.gdi = Some(gdi);
+        Ok(Some(jpeg))
     }
 }

@@ -710,7 +710,7 @@ git commit -m "feat: implement zero-config LAN discovery beacon and parser"
 - Consumes: `windows` crate (Win32 SendInput, DXGI APIs)
 - Produces: `inject_input_event(event: &InputEvent, screen_w: u32, screen_h: u32)`, `DxgiCapturer::acquire_next_frame()`
 
-- [ ] **Step 1: Add `windows` dependency for Windows targets**
+- [x] **Step 1: Add `windows` dependency for Windows targets**
 
 In `projects/mirror_app/rust/Cargo.toml`, add:
 ```toml
@@ -724,7 +724,7 @@ features = [
 ]
 ```
 
-- [ ] **Step 2: Implement Windows Input Injection**
+- [x] **Step 2: Implement Windows Input Injection**
 
 In `projects/mirror_app/rust/src/platform/windows_input.rs`:
 ```rust
@@ -814,7 +814,7 @@ pub mod windows_input;
 pub mod windows_capture;
 ```
 
-- [ ] **Step 3: Run `cargo check` to verify Windows Win32 compilation**
+- [x] **Step 3: Run `cargo check` to verify Windows Win32 compilation**
 
 Run:
 ```bash
@@ -822,7 +822,7 @@ cd "D:/Software/Hermes Workspace/projects/mirror_app/rust" && cargo check
 ```
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add projects/mirror_app/rust/src/platform/
@@ -843,7 +843,7 @@ git commit -m "feat: implement Windows native input injection via SendInput"
 - Consumes: `LanBeacon`, Flutter Material 3
 - Produces: `HomeView` with My Device ID Card, LAN Discovered list, and PIN pairing dialog.
 
-- [ ] **Step 1: Create DiscoveredDevice model**
+- [x] **Step 1: Create DiscoveredDevice model**
 
 In `projects/mirror_app/lib/src/models/device.dart`:
 ```dart
@@ -866,7 +866,7 @@ class DiscoveredDevice {
 }
 ```
 
-- [ ] **Step 2: Write failing unit test for device discovery list state**
+- [x] **Step 2: Write failing unit test for device discovery list state**
 
 In `projects/mirror_app/test/discovery_controller_test.dart`:
 ```dart
@@ -890,7 +890,7 @@ void main() {
 }
 ```
 
-- [ ] **Step 3: Implement `HomeView` UI**
+- [x] **Step 3: Implement `HomeView` UI**
 
 In `projects/mirror_app/lib/src/views/home_view.dart`:
 ```dart
@@ -1029,7 +1029,7 @@ class _HomeViewState extends State<HomeView> {
 }
 ```
 
-- [ ] **Step 4: Run Flutter test to verify passing**
+- [x] **Step 4: Run Flutter test to verify passing**
 
 Run:
 ```bash
@@ -1037,7 +1037,7 @@ cd "D:/Software/Hermes Workspace/projects/mirror_app" && flutter test test/disco
 ```
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add projects/mirror_app/lib/ projects/mirror_app/test/
@@ -1056,7 +1056,7 @@ git commit -m "feat: add HomeView UI with Device ID card and LAN discovery list"
 - Consumes: Complete project workspace
 - Produces: Verified executable artifacts and test verification log
 
-- [ ] **Step 1: Run comprehensive Rust test suite**
+- [x] **Step 1: Run comprehensive Rust test suite**
 
 Run:
 ```bash
@@ -1064,7 +1064,7 @@ cd "D:/Software/Hermes Workspace/projects/mirror_app/rust" && cargo test -- --no
 ```
 Expected: All tests pass (Identity, Pairing, Protocol, Discovery).
 
-- [ ] **Step 2: Run Flutter unit & widget tests**
+- [x] **Step 2: Run Flutter unit & widget tests**
 
 Run:
 ```bash
@@ -1072,14 +1072,14 @@ cd "D:/Software/Hermes Workspace/projects/mirror_app" && flutter test
 ```
 Expected: All tests pass with zero failures.
 
-- [ ] **Step 3: Document benchmark metrics & verification report**
+- [x] **Step 3: Document benchmark metrics & verification report**
 
 Verify against performance criteria:
 - CPU < 6%
 - RAM < 90MB Windows
 - Latency < 28ms LAN
 
-- [ ] **Step 4: Commit final verification suite**
+- [x] **Step 4: Commit final verification suite**
 
 ```bash
 git add .

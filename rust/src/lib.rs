@@ -9,6 +9,8 @@ pub mod audio;
 pub mod auth;
 pub mod stun;
 
+pub use platform::windows_capture::{DxgiCapturer, HybridScreenCapturer};
+
 #[flutter_rust_bridge::frb(init)]
 pub fn init_app() {
     flutter_rust_bridge::setup_default_user_utils();

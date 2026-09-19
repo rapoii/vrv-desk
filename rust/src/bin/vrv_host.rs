@@ -14,7 +14,7 @@ use mirror_core::audio::AudioLoopbackCapturer;
 use mirror_core::discovery::{
     LanBeacon, LanDiscoveryBroadcaster, DISCOVERY_MULTICAST_ADDR, DISCOVERY_PORT,
 };
-use mirror_core::gdi_capture::ScreenCapturer;
+use mirror_core::platform::windows_capture::HybridScreenCapturer;
 use mirror_core::identity::DeviceIdentity;
 use mirror_core::platform::windows_input::{
     get_clipboard_sequence_number, get_clipboard_text, inject_input, inject_shortcut,
@@ -324,28 +324,35 @@ where
     println!("✅ Peer {} authenticated successfully!", peer_desc);
 
     // Initialize capturer only after successful authentication
-    let capturer = ScreenCapturer::new().map_err(|e| format!("Capturer init failed: {}", e))?;
-    println!("✅ Screen capturer initialized for session!");
-    let screen_w = capturer.screen_width;
-    let screen_h = capturer.screen_height;
+    let mut capturer = HybridScreenCapturer::new().map_err(|e| format!("Capturer init failed: {}", e))?;
+    if capturer.is_dxgi() {
+        println!("🚀 Screen capture engine: DirectX 11 DXGI (Hardware GPU Acceleration)");
+    } else {
+        println!("⚠️ Screen capture engine: GDI BitBlt (Software CPU Fallback)");
+    }
+    let screen_w = capturer.screen_width();
+    let screen_h = capturer.screen_height();
 
     let ws_sender = std::sync::Arc::new(tokio::sync::Mutex::new(ws_sender));
     let is_running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
 
     let is_running_frame = is_running.clone();
     let ws_sender_frame = ws_sender.clone();
-    // 1. Task: Stream JPEG frames at ~30 FPS
+    // 1. Task: Stream JPEG frames at target ~60 FPS with smart delta capture
     let frame_task = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_millis(35));
+        let mut interval = tokio::time::interval(Duration::from_millis(16));
         while is_running_frame.load(std::sync::atomic::Ordering::Relaxed) {
             interval.tick().await;
-            match capturer.capture_jpeg(60, 1024) {
-                Ok(jpeg_bytes) => {
+            match capturer.capture_jpeg(10, 60, 1024) {
+                Ok(Some(jpeg_bytes)) => {
                     let mut sender = ws_sender_frame.lock().await;
                     if sender.send(Message::Binary(jpeg_bytes.into())).await.is_err() {
                         is_running_frame.store(false, std::sync::atomic::Ordering::Relaxed);
                         break;
                     }
+                }
+                Ok(None) => {
+                    // Frame unchanged (static screen), skip send to conserve CPU & bandwidth
                 }
                 Err(e) => {
                     eprintln!("Capture error: {}", e);
