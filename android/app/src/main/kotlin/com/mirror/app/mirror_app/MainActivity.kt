@@ -19,6 +19,10 @@ class MainActivity : FlutterActivity() {
     private var currentSampleRate: Int = 0
     private var currentChannels: Int = 0
     private val audioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private var totalChunksWritten: Long = 0
+    private var nonZeroChunksWritten: Long = 0
+    private var peakAmplitude: Int = 0
+    private var totalBytesWritten: Long = 0
 
     companion object {
         private const val TAG = "AudioTrackNative"
@@ -142,6 +146,34 @@ class MainActivity : FlutterActivity() {
                 track.write(data, 0, data.size, AudioTrack.WRITE_NON_BLOCKING)
             } else {
                 track.write(data, 0, data.size)
+            }
+
+            totalChunksWritten++
+            totalBytesWritten += data.size
+
+            // Check if chunk contains non-zero PCM samples (detecting real sound)
+            var chunkMax = 0
+            var i = 0
+            while (i + 1 < data.size) {
+                val low = data[i].toInt() and 0xFF
+                val high = data[i + 1].toInt()
+                val sample = Math.abs((high shl 8) or low)
+                if (sample > chunkMax) chunkMax = sample
+                i += 2
+            }
+            if (chunkMax > 100) {
+                nonZeroChunksWritten++
+            }
+            if (chunkMax > peakAmplitude) {
+                peakAmplitude = chunkMax
+            }
+
+            // Periodic telemetry log every 100 chunks (~2 seconds)
+            if (totalChunksWritten % 100L == 0L) {
+                Log.i(
+                    TAG,
+                    "AudioTrack stats: chunks=$totalChunksWritten, nonZero=$nonZeroChunksWritten, totalBytes=$totalBytesWritten, peakAmp=$peakAmplitude, lastChunkMax=$chunkMax, muted=$isMuted"
+                )
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error writing audio chunk", e)
