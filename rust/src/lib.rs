@@ -5,6 +5,7 @@ pub mod platform;
 pub mod protocol;
 pub mod transport;
 pub mod gdi_capture;
+pub mod audio;
 pub mod auth;
 pub mod stun;
 

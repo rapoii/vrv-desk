@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/audio_stream_player.dart';
 import '../widgets/pin_dialog.dart';
 import '../widgets/shortcut_bar.dart';
 
@@ -14,6 +15,7 @@ class MirrorView extends StatefulWidget {
   final String? signalingUrl;
   final String? targetDeviceId;
   final WebSocketConnector? webSocketConnector;
+  final AudioStreamPlayer? audioPlayer;
 
   const MirrorView({
     super.key,
@@ -23,6 +25,7 @@ class MirrorView extends StatefulWidget {
     this.signalingUrl,
     this.targetDeviceId,
     this.webSocketConnector,
+    this.audioPlayer,
   }) : assert(hostIp != null || (signalingUrl != null && targetDeviceId != null),
             'Must provide either hostIp or both signalingUrl and targetDeviceId');
 
@@ -47,9 +50,13 @@ class _MirrorViewState extends State<MirrorView> {
   final FocusNode _keyboardFocusNode = FocusNode();
   bool _showShortcuts = false;
 
+  late final AudioStreamPlayer _audioPlayer;
+  bool _isAudioMuted = false;
+
   @override
   void initState() {
     super.initState();
+    _audioPlayer = widget.audioPlayer ?? AudioStreamPlayer();
     _connect();
   }
 
@@ -100,11 +107,17 @@ class _MirrorViewState extends State<MirrorView> {
       ws.listen(
         (data) {
           if (data is List<int>) {
-            setState(() {
-              _isConnected = true;
-              _currentFrame = Uint8List.fromList(data);
-              _frameCount++;
-            });
+            if (AudioStreamPlayer.isVaudPacket(data)) {
+              if (_isAuthenticated) {
+                _audioPlayer.handleVaudPacket(data);
+              }
+            } else {
+              setState(() {
+                _isConnected = true;
+                _currentFrame = Uint8List.fromList(data);
+                _frameCount++;
+              });
+            }
           } else if (data is String) {
             _handleTextMessage(data);
           }
@@ -342,6 +355,23 @@ class _MirrorViewState extends State<MirrorView> {
     }
   }
 
+  void _toggleAudioMute() {
+    setState(() {
+      _isAudioMuted = !_isAudioMuted;
+    });
+    _audioPlayer.setMuted(_isAudioMuted);
+    if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_isAudioMuted ? '🔇 Audio muted' : '🔊 Audio unmuted'),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   void _toggleKeyboard() {
     if (_keyboardFocusNode.hasFocus) {
       _keyboardFocusNode.unfocus();
@@ -393,6 +423,7 @@ class _MirrorViewState extends State<MirrorView> {
   @override
   void dispose() {
     _socket?.close();
+    _audioPlayer.stop();
     _textController.dispose();
     _keyboardFocusNode.dispose();
     super.dispose();
@@ -641,6 +672,15 @@ class _MirrorViewState extends State<MirrorView> {
                             ),
                             tooltip: 'Toggle Shortcuts Bar',
                             onPressed: _toggleShortcuts,
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: Icon(
+                              _isAudioMuted ? Icons.volume_off : Icons.volume_up,
+                              color: _isAudioMuted ? Colors.redAccent : Colors.white,
+                            ),
+                            tooltip: _isAudioMuted ? 'Unmute Host Audio' : 'Mute Host Audio',
+                            onPressed: _toggleAudioMute,
                           ),
                           const SizedBox(width: 4),
                           IconButton(

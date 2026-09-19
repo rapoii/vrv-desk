@@ -10,6 +10,7 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
 use mirror_core::auth::AuthGatekeeper;
+use mirror_core::audio::AudioLoopbackCapturer;
 use mirror_core::gdi_capture::ScreenCapturer;
 use mirror_core::identity::DeviceIdentity;
 use mirror_core::platform::windows_input::{
@@ -376,6 +377,32 @@ where
         }
     });
 
+    // 3. Task: Audio loopback streaming
+    let is_running_audio = is_running.clone();
+    let ws_sender_audio = ws_sender.clone();
+    let audio_task = tokio::spawn(async move {
+        let mut capturer = AudioLoopbackCapturer::new();
+        println!(
+            "🔊 Audio capturer started (channels: {}, rate: {}, mock: {})",
+            capturer.channels, capturer.sample_rate, capturer.is_mock
+        );
+
+        while is_running_audio.load(std::sync::atomic::Ordering::Relaxed) {
+            match capturer.read_packet_timeout(Duration::from_millis(50)) {
+                Some(packet) => {
+                    let mut sender = ws_sender_audio.lock().await;
+                    if sender.send(Message::Binary(packet.into())).await.is_err() {
+                        is_running_audio.store(false, std::sync::atomic::Ordering::Relaxed);
+                        break;
+                    }
+                }
+                None => {
+                    tokio::task::yield_now().await;
+                }
+            }
+        }
+    });
+
     // 3. Task: Receive and inject input events
     let is_running_input = is_running.clone();
     let input_task = tokio::spawn(async move {
@@ -483,7 +510,7 @@ where
         is_running_input.store(false, std::sync::atomic::Ordering::Relaxed);
     });
 
-    let _ = tokio::join!(frame_task, clipboard_task, input_task);
+    let _ = tokio::join!(frame_task, clipboard_task, audio_task, input_task);
 
     Ok(())
 }
