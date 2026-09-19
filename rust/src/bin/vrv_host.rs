@@ -1,13 +1,16 @@
-use std::net::SocketAddr;
-use std::time::Duration;
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
+use std::net::SocketAddr;
+use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 
 use mirror_core::gdi_capture::ScreenCapturer;
-use mirror_core::platform::windows_input::inject_input;
+use mirror_core::platform::windows_input::{
+    get_clipboard_sequence_number, get_clipboard_text, inject_input, inject_shortcut,
+    inject_unicode_text, set_clipboard_text,
+};
 use mirror_core::protocol::{InputEvent, MouseButton};
 
 #[derive(Deserialize, Debug)]
@@ -27,6 +30,12 @@ enum ClientInput {
     KeyDown { keycode: u32 },
     #[serde(rename = "key_up")]
     KeyUp { keycode: u32 },
+    #[serde(rename = "type_text")]
+    TypeText { text: String },
+    #[serde(rename = "shortcut")]
+    Shortcut { name: String },
+    #[serde(rename = "clipboard_text")]
+    ClipboardText { text: String },
 }
 
 #[tokio::main]
@@ -40,7 +49,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("==================================================");
 
     let test_cap = ScreenCapturer::new()?;
-    println!("🖥️ Primary Screen detected: {}x{}", test_cap.screen_width, test_cap.screen_height);
+    println!(
+        "🖥️ Primary Screen detected: {}x{}",
+        test_cap.screen_width, test_cap.screen_height
+    );
 
     while let Ok((stream, peer_addr)) = listener.accept().await {
         println!("🔗 New client connected from: {}", peer_addr);
@@ -58,9 +70,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn handle_connection(stream: TcpStream) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn handle_connection(
+    stream: TcpStream,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let ws_stream = accept_async(stream).await?;
-    let mut capturer = ScreenCapturer::new()?;
+    let capturer = ScreenCapturer::new()?;
     let screen_w = capturer.screen_width;
     let screen_h = capturer.screen_height;
 
@@ -68,8 +82,22 @@ async fn handle_connection(stream: TcpStream) -> Result<(), Box<dyn std::error::
 
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<()>(2);
     let shutdown_tx_clone = shutdown_tx.clone();
+    let shutdown_tx_clip = shutdown_tx.clone();
 
-    // 1. Task: Stream JPEG frames at ~30 FPS
+    let (out_msg_tx, mut out_msg_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+
+    // 1. Task: Outgoing WebSocket message sender (handles both binary frames and text clipboard sync)
+    let send_task = tokio::spawn(async move {
+        while let Some(msg) = out_msg_rx.recv().await {
+            if ws_sender.send(msg).await.is_err() {
+                let _ = shutdown_tx.send(()).await;
+                break;
+            }
+        }
+    });
+
+    let out_msg_tx_frames = out_msg_tx.clone();
+    // 2. Task: Stream JPEG frames at ~30 FPS
     let frame_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(35));
         loop {
@@ -80,8 +108,7 @@ async fn handle_connection(stream: TcpStream) -> Result<(), Box<dyn std::error::
                 _ = interval.tick() => {
                     match capturer.capture_jpeg(60, 1024) {
                         Ok(jpeg_bytes) => {
-                            if ws_sender.send(Message::Binary(jpeg_bytes.into())).await.is_err() {
-                                let _ = shutdown_tx.send(()).await;
+                            if out_msg_tx_frames.send(Message::Binary(jpeg_bytes.into())).is_err() {
                                 break;
                             }
                         }
@@ -95,22 +122,65 @@ async fn handle_connection(stream: TcpStream) -> Result<(), Box<dyn std::error::
         }
     });
 
-    // 2. Task: Receive and inject input events
+    // 3. Task: Clipboard monitor loop
+    // Checks GetClipboardSequenceNumber() every ~500ms.
+    // If changed, sends {"type": "clipboard_sync", "text": "..."} to connected client.
+    let out_msg_tx_clip = out_msg_tx.clone();
+    let clipboard_task = tokio::spawn(async move {
+        let mut last_seq = get_clipboard_sequence_number();
+        let mut interval = tokio::time::interval(Duration::from_millis(500));
+        loop {
+            interval.tick().await;
+            let current_seq = get_clipboard_sequence_number();
+            if current_seq != last_seq {
+                last_seq = current_seq;
+                if let Some(text) = get_clipboard_text() {
+                    let sync_msg = serde_json::json!({
+                        "type": "clipboard_sync",
+                        "text": text
+                    });
+                    if out_msg_tx_clip
+                        .send(Message::Text(sync_msg.to_string().into()))
+                        .is_err()
+                    {
+                        let _ = shutdown_tx_clip.send(()).await;
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    // 4. Task: Receive and inject input events
     let input_task = tokio::spawn(async move {
         while let Some(msg) = ws_receiver.next().await {
             match msg {
                 Ok(Message::Text(text)) => {
                     if let Ok(input) = serde_json::from_str::<ClientInput>(&text) {
                         println!("📥 Received input event: {:?}", input);
-                        let event = match input {
-                            ClientInput::MouseMove { x, y } => Some(InputEvent::MouseMove { x, y }),
+                        match input {
+                            ClientInput::MouseMove { x, y } => {
+                                let _ = inject_input(
+                                    &InputEvent::MouseMove { x, y },
+                                    screen_w as u32,
+                                    screen_h as u32,
+                                );
+                            }
                             ClientInput::MouseDown { button } => {
                                 let btn = match button.as_deref() {
                                     Some("right") => MouseButton::Right,
                                     Some("middle") => MouseButton::Middle,
                                     _ => MouseButton::Left,
                                 };
-                                Some(InputEvent::MouseDown { x: 0.0, y: 0.0, button: btn })
+                                let _ = inject_input(
+                                    &InputEvent::MouseDown {
+                                        x: 0.0,
+                                        y: 0.0,
+                                        button: btn,
+                                    },
+                                    screen_w as u32,
+                                    screen_h as u32,
+                                );
                             }
                             ClientInput::MouseUp { button } => {
                                 let btn = match button.as_deref() {
@@ -118,16 +188,53 @@ async fn handle_connection(stream: TcpStream) -> Result<(), Box<dyn std::error::
                                     Some("middle") => MouseButton::Middle,
                                     _ => MouseButton::Left,
                                 };
-                                Some(InputEvent::MouseUp { x: 0.0, y: 0.0, button: btn })
+                                let _ = inject_input(
+                                    &InputEvent::MouseUp {
+                                        x: 0.0,
+                                        y: 0.0,
+                                        button: btn,
+                                    },
+                                    screen_w as u32,
+                                    screen_h as u32,
+                                );
                             }
-                            ClientInput::TouchTap { x, y } => Some(InputEvent::TouchTap { x, y }),
-                            ClientInput::MouseWheel { delta_y } => Some(InputEvent::MouseWheel { delta_y }),
-                            ClientInput::KeyDown { keycode } => Some(InputEvent::KeyDown { keycode }),
-                            ClientInput::KeyUp { keycode } => Some(InputEvent::KeyUp { keycode }),
-                        };
-
-                        if let Some(ev) = event {
-                            let _ = inject_input(&ev, screen_w as u32, screen_h as u32);
+                            ClientInput::TouchTap { x, y } => {
+                                let _ = inject_input(
+                                    &InputEvent::TouchTap { x, y },
+                                    screen_w as u32,
+                                    screen_h as u32,
+                                );
+                            }
+                            ClientInput::MouseWheel { delta_y } => {
+                                let _ = inject_input(
+                                    &InputEvent::MouseWheel { delta_y },
+                                    screen_w as u32,
+                                    screen_h as u32,
+                                );
+                            }
+                            ClientInput::KeyDown { keycode } => {
+                                let _ = inject_input(
+                                    &InputEvent::KeyDown { keycode },
+                                    screen_w as u32,
+                                    screen_h as u32,
+                                );
+                            }
+                            ClientInput::KeyUp { keycode } => {
+                                let _ = inject_input(
+                                    &InputEvent::KeyUp { keycode },
+                                    screen_w as u32,
+                                    screen_h as u32,
+                                );
+                            }
+                            ClientInput::TypeText { text } => {
+                                let _ = inject_unicode_text(&text);
+                            }
+                            ClientInput::Shortcut { name } => {
+                                let _ = inject_shortcut(&name);
+                            }
+                            ClientInput::ClipboardText { text } => {
+                                set_clipboard_text(&text);
+                            }
                         }
                     } else {
                         eprintln!("Failed to parse input: {}", text);
@@ -147,7 +254,12 @@ async fn handle_connection(stream: TcpStream) -> Result<(), Box<dyn std::error::
         }
     });
 
-    let _ = tokio::join!(frame_task, input_task);
+    let _ = tokio::select! {
+        _ = frame_task => {},
+        _ = input_task => {},
+        _ = clipboard_task => {},
+        _ = send_task => {},
+    };
 
     Ok(())
 }
