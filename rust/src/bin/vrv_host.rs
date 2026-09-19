@@ -11,6 +11,9 @@ use tokio_tungstenite::tungstenite::Message;
 
 use mirror_core::auth::AuthGatekeeper;
 use mirror_core::audio::AudioLoopbackCapturer;
+use mirror_core::discovery::{
+    LanBeacon, LanDiscoveryBroadcaster, DISCOVERY_MULTICAST_ADDR, DISCOVERY_PORT,
+};
 use mirror_core::gdi_capture::ScreenCapturer;
 use mirror_core::identity::DeviceIdentity;
 use mirror_core::platform::windows_input::{
@@ -152,6 +155,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📡 STUN Public: {}", stun_display);
     println!("📶 Local LAN:   ws://{}", addr);
     println!("=================================================");
+
+    // Start zero-config LAN discovery UDP broadcaster
+    let beacon = LanBeacon::new(device_id.clone(), host_name.clone(), 53211);
+    let _broadcaster = LanDiscoveryBroadcaster::start(beacon, 1500);
+    println!("📡 LAN discovery broadcaster started on UDP port {} (multicast: {})", DISCOVERY_PORT, DISCOVERY_MULTICAST_ADDR);
 
     let screen_w = unsafe {
         windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics(

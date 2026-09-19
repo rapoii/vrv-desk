@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/device.dart';
+import '../services/lan_discovery_service.dart';
 import '../widgets/pin_dialog.dart';
 import 'mirror_view.dart';
 
@@ -9,6 +11,7 @@ class HomeView extends StatefulWidget {
   final List<DiscoveredDevice> initialDevices;
   final void Function(DiscoveredDevice device, String pin)? onConnect;
   final String signalingUrl;
+  final LanDiscoveryService? lanDiscoveryService;
 
   const HomeView({
     super.key,
@@ -16,6 +19,7 @@ class HomeView extends StatefulWidget {
     this.initialDevices = const [],
     this.onConnect,
     this.signalingUrl = 'ws://10.0.2.2:53212',
+    this.lanDiscoveryService,
   });
 
   static bool is6DigitDeviceId(String input) {
@@ -31,15 +35,28 @@ class _HomeViewState extends State<HomeView> {
   late List<DiscoveredDevice> _devices;
   bool _isCopied = false;
   final TextEditingController _quickConnectController = TextEditingController();
+  late final LanDiscoveryService _lanService;
+  StreamSubscription<List<DiscoveredDevice>>? _lanSubscription;
 
   @override
   void initState() {
     super.initState();
     _devices = List.from(widget.initialDevices);
+    _lanService = widget.lanDiscoveryService ?? LanDiscoveryService();
+    _lanService.start();
+    _lanSubscription = _lanService.devicesStream.listen((devices) {
+      if (mounted) {
+        setState(() {
+          _devices = devices;
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
+    _lanSubscription?.cancel();
+    _lanService.stop();
     _quickConnectController.dispose();
     super.dispose();
   }

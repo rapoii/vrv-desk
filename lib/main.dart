@@ -45,9 +45,6 @@ class _VrvDeskAppState extends State<VrvDeskApp> {
       themeMode: ThemeMode.system,
       home: HomeView(
         myDeviceId: _myDeviceId,
-        onConnect: (device, pin) {
-          // Handshake trigger
-        },
       ),
     );
   }

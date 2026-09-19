@@ -617,7 +617,7 @@ git commit -m "feat: implement wire protocol for video, audio, and input events"
 - Consumes: `tokio::net::UdpSocket`, `socket2`, `identity::DeviceIdentity`
 - Produces: `LanBeacon`, `LanDiscoveryBroadcaster`, `LanDiscoveryListener`
 
-- [ ] **Step 1: Write failing unit test for LAN beacon serialization**
+- [x] **Step 1: Write failing unit test for LAN beacon serialization**
 
 In `projects/mirror_app/rust/tests/discovery_test.rs`:
 ```rust
@@ -639,7 +639,7 @@ fn test_lan_beacon_roundtrip() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 ```bash
@@ -647,7 +647,7 @@ cd "D:/Software/Hermes Workspace/projects/mirror_app/rust" && cargo test --test 
 ```
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `LanBeacon` and UDP broadcast handlers**
+- [x] **Step 3: Implement `LanBeacon` and UDP broadcast handlers**
 
 In `projects/mirror_app/rust/src/discovery/lan.rs`:
 ```rust
@@ -682,7 +682,7 @@ In `projects/mirror_app/rust/src/discovery/mod.rs`:
 pub mod lan;
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -690,7 +690,7 @@ cd "D:/Software/Hermes Workspace/projects/mirror_app/rust" && cargo test --test 
 ```
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add projects/mirror_app/rust/src/discovery/ projects/mirror_app/rust/tests/discovery_test.rs

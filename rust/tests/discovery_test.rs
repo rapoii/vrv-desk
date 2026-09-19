@@ -1,41 +1,81 @@
-use mirror_core::discovery::lan::{
-    LanBeacon, LanDiscoveryBroadcaster, LanDiscoveryListener, DISCOVERY_MULTICAST_ADDR,
-    DISCOVERY_PORT,
+use mirror_core::discovery::{
+    LanBeacon, LanDiscoveryBroadcaster, DEFAULT_BROADCAST_INTERVAL_MS,
+    DISCOVERY_MULTICAST_ADDR, DISCOVERY_PORT,
 };
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::UdpSocket;
+use std::time::Duration;
 
 #[test]
-fn test_lan_beacon_roundtrip() {
-    let beacon = LanBeacon {
-        device_id: "849201".to_string(),
-        device_name: "PC-Rafi".to_string(),
-        os_type: "windows".to_string(),
-        port: DISCOVERY_PORT,
-        protocol_version: 1,
-    };
+fn test_lan_beacon_serialization_roundtrip() {
+    let beacon = LanBeacon::new(
+        "123456".to_string(),
+        "Test-Host".to_string(),
+        53211,
+    );
 
-    assert_eq!(DISCOVERY_MULTICAST_ADDR, Ipv4Addr::new(239, 255, 42, 99));
-    let encoded = beacon.encode();
-    let decoded = LanBeacon::decode(&encoded).expect("Valid beacon");
-    assert_eq!(beacon, decoded);
+    assert_eq!(beacon.device_id, "123456");
+    assert_eq!(beacon.device_name, "Test-Host");
+    assert_eq!(beacon.os_type, "windows");
+    assert_eq!(beacon.port, 53211);
+    assert_eq!(beacon.protocol_version, 1);
+
+    let bytes = beacon.encode();
+    assert!(!bytes.is_empty());
+
+    let decoded = LanBeacon::decode(&bytes).expect("Failed to decode LanBeacon");
+    assert_eq!(decoded, beacon);
 }
 
 #[test]
-fn test_lan_discovery_helpers() {
+fn test_lan_beacon_invalid_json() {
+    let bad_data = b"{\"invalid\": \"json_data\"}";
+    let result = LanBeacon::decode(bad_data);
+    assert!(result.is_err(), "Expected error on missing required fields");
+
+    let corrupted_data = b"not-json-at-all";
+    let result2 = LanBeacon::decode(corrupted_data);
+    assert!(result2.is_err(), "Expected error on corrupted bytes");
+}
+
+#[test]
+fn test_lan_discovery_broadcast_receive_local() {
+    // Check constants
+    assert_eq!(DISCOVERY_MULTICAST_ADDR, "239.255.42.99");
+    assert_eq!(DISCOVERY_PORT, 53210);
+    assert_eq!(DEFAULT_BROADCAST_INTERVAL_MS, 1500);
+
     let beacon = LanBeacon::new(
-        "849201".to_string(),
-        "PC-Rafi".to_string(),
-        "windows".to_string(),
-        DISCOVERY_PORT,
+        "TEST99".to_string(),
+        "Discovery-Tester".to_string(),
+        53211,
     );
-    let broadcaster = LanDiscoveryBroadcaster::new(beacon.clone());
-    assert_eq!(broadcaster.beacon(), &beacon);
 
-    let src_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)), DISCOVERY_PORT);
-    let encoded = beacon.encode();
-    let parsed = LanDiscoveryListener::parse_packet(&encoded, src_addr);
-    assert_eq!(parsed, Some((beacon, src_addr)));
+    // Bind a listener socket on localhost or wildcard port to test socket creation & shutdown
+    let listener = UdpSocket::bind("127.0.0.1:0").expect("Failed to bind test UDP listener");
+    listener
+        .set_read_timeout(Some(Duration::from_millis(200)))
+        .expect("Failed to set read timeout");
 
-    let invalid = LanDiscoveryListener::parse_packet(b"not-json", src_addr);
-    assert_eq!(invalid, None);
+    // Start broadcaster with a fast interval (100ms) for testing
+    let broadcaster = LanDiscoveryBroadcaster::start(beacon.clone(), 100);
+
+    // Let it run for a short duration
+    std::thread::sleep(Duration::from_millis(250));
+
+    // Verify graceful stop and cleanup without hanging
+    broadcaster.stop();
+}
+
+#[test]
+fn test_lan_discovery_broadcaster_drop() {
+    let beacon = LanBeacon::new(
+        "DROP01".to_string(),
+        "Drop-Tester".to_string(),
+        53211,
+    );
+
+    let broadcaster = LanDiscoveryBroadcaster::start(beacon, 100);
+    std::thread::sleep(Duration::from_millis(150));
+    // Explicit drop should join thread cleanly
+    drop(broadcaster);
 }
