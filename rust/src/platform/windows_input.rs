@@ -1,29 +1,19 @@
 use crate::protocol::{InputEvent, MouseButton};
 #[cfg(windows)]
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
+#[cfg(windows)]
+use windows::Win32::UI::WindowsAndMessaging::SetCursorPos;
 
 #[cfg(windows)]
 pub fn inject_input(event: &InputEvent, _screen_w: u32, _screen_h: u32) -> Result<(), String> {
     unsafe {
         match event {
             InputEvent::MouseMove { x, y } => {
-                let norm_x = ((x * 65535.0) as i32).clamp(0, 65535);
-                let norm_y = ((y * 65535.0) as i32).clamp(0, 65535);
-                let input = INPUT {
-                    r#type: INPUT_MOUSE,
-                    Anonymous: INPUT_0 {
-                        mi: MOUSEINPUT {
-                            dx: norm_x,
-                            dy: norm_y,
-                            mouseData: 0,
-                            dwFlags: MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE,
-                            time: 0,
-                            dwExtraInfo: 0,
-                        },
-                    },
-                };
-                SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+                let px = (x * _screen_w as f32) as i32;
+                let py = (y * _screen_h as f32) as i32;
+                let _ = SetCursorPos(px, py);
             }
+
             InputEvent::MouseDown { x: _, y: _, button } => {
                 let flag = match button {
                     MouseButton::Left => MOUSEEVENTF_LEFTDOWN,
@@ -114,21 +104,9 @@ pub fn inject_input(event: &InputEvent, _screen_w: u32, _screen_h: u32) -> Resul
                 SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
             }
             InputEvent::TouchTap { x, y } => {
-                let norm_x = ((x * 65535.0) as i32).clamp(0, 65535);
-                let norm_y = ((y * 65535.0) as i32).clamp(0, 65535);
-                let move_input = INPUT {
-                    r#type: INPUT_MOUSE,
-                    Anonymous: INPUT_0 {
-                        mi: MOUSEINPUT {
-                            dx: norm_x,
-                            dy: norm_y,
-                            mouseData: 0,
-                            dwFlags: MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE,
-                            time: 0,
-                            dwExtraInfo: 0,
-                        },
-                    },
-                };
+                let px = (x * _screen_w as f32) as i32;
+                let py = (y * _screen_h as f32) as i32;
+                let _ = SetCursorPos(px, py);
                 let down_input = INPUT {
                     r#type: INPUT_MOUSE,
                     Anonymous: INPUT_0 {
@@ -155,10 +133,7 @@ pub fn inject_input(event: &InputEvent, _screen_w: u32, _screen_h: u32) -> Resul
                         },
                     },
                 };
-                SendInput(
-                    &[move_input, down_input, up_input],
-                    std::mem::size_of::<INPUT>() as i32,
-                );
+                SendInput(&[down_input, up_input], std::mem::size_of::<INPUT>() as i32);
             }
             _ => {}
         }

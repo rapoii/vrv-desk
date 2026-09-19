@@ -6,6 +6,11 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
 
+[[bin]]
+name = "vrv_host"
+path = "src/bin/vrv_host.rs"
+
+
 [dependencies]
 flutter_rust_bridge = "=2.0.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -18,12 +23,18 @@ rand = "0.8"
 socket2 = "0.5"
 tokio = { version = "1.36", features = ["full"] }
 hex = "0.4"
+image = { version = "0.25.10", default-features = false, features = ["jpeg"] }
+fast_image_resize = "6.1.0"
+tokio-tungstenite = { version = "0.30.0", features = ["connect"] }
+futures-util = "0.3.34"
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.52"
 features = [
+    "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_Graphics_Gdi",
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Direct3D11",
 ]
