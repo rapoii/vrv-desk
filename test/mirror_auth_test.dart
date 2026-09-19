@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mirror_app/src/models/device.dart';
-import 'package:mirror_app/src/views/home_view.dart';
-import 'package:mirror_app/src/views/mirror_view.dart';
-import 'package:mirror_app/src/widgets/pin_dialog.dart';
+import 'package:vrv_desk/src/models/device.dart';
+import 'package:vrv_desk/src/views/home_view.dart';
+import 'package:vrv_desk/src/views/mirror_view.dart';
+import 'package:vrv_desk/src/widgets/pin_dialog.dart';
 import 'test_websocket_helper.dart';
 
 void main() {

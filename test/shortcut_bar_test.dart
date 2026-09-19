@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mirror_app/src/widgets/shortcut_bar.dart';
+import 'package:vrv_desk/src/widgets/shortcut_bar.dart';
 
 void main() {
   group('ShortcutBar Widget', () {

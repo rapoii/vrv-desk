@@ -1,4 +1,4 @@
-package com.mirror.app.mirror_app
+package com.vrvdesk.app
 
 import android.media.AudioAttributes
 import android.media.AudioFormat

@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mirror_app/src/models/device.dart';
-import 'package:mirror_app/src/services/lan_discovery_service.dart';
-import 'package:mirror_app/src/views/home_view.dart';
+import 'package:vrv_desk/src/models/device.dart';
+import 'package:vrv_desk/src/services/lan_discovery_service.dart';
+import 'package:vrv_desk/src/views/home_view.dart';
 
 void main() {
   group('LanDiscoveryService Unit Tests', () {

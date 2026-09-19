@@ -1,5 +1,5 @@
-name: mirror_app
-description: "A secure cross-platform screen mirroring and remote control app."
+name: vrv_desk
+description: "VrV Desk - Ultra-Lightweight Screen Mirror & Remote Control"
 publish_to: 'none'
 
 version: 1.0.0+1

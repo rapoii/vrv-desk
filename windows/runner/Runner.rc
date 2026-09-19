@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.mirror.app" "\0"
-            VALUE "FileDescription", "mirror_app" "\0"
-            VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "mirror_app" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.mirror.app. All rights reserved." "\0"
-            VALUE "OriginalFilename", "mirror_app.exe" "\0"
-            VALUE "ProductName", "mirror_app" "\0"
+            VALUE "CompanyName", "com.vrvdesk.app" "\0"
+            VALUE "FileDescription", "vrv_desk" "\0"
+            VALUE "FileVersion", "1.0.0.1" "\0"
+            VALUE "InternalName", "vrv_desk" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 com.vrvdesk.app. All rights reserved." "\0"
+            VALUE "OriginalFilename", "vrv_desk.exe" "\0"
+            VALUE "ProductName", "vrv_desk" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

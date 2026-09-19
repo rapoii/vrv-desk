@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mirror_app/src/services/audio_stream_player.dart';
-import 'package:mirror_app/src/views/mirror_view.dart';
+import 'package:vrv_desk/src/services/audio_stream_player.dart';
+import 'package:vrv_desk/src/views/mirror_view.dart';
 import 'test_websocket_helper.dart';
 
 void main() {

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mirror_app/main.dart';
+import 'package:vrv_desk/main.dart';
 
 void main() {
   testWidgets('VrvDeskApp boots into HomeView with Device ID', (WidgetTester tester) async {

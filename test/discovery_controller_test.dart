@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mirror_app/src/models/device.dart';
-import 'package:mirror_app/src/views/home_view.dart';
-import 'package:mirror_app/src/widgets/pin_dialog.dart';
+import 'package:vrv_desk/src/models/device.dart';
+import 'package:vrv_desk/src/views/home_view.dart';
+import 'package:vrv_desk/src/widgets/pin_dialog.dart';
 
 void main() {
   group('DiscoveredDevice Model', () {
