@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../widgets/shortcut_bar.dart';
 
 class MirrorView extends StatefulWidget {
   final String hostIp;
@@ -23,6 +24,10 @@ class _MirrorViewState extends State<MirrorView> {
   bool _isConnected = false;
   String _statusMessage = 'Connecting...';
   int _frameCount = 0;
+
+  final TextEditingController _textController = TextEditingController();
+  final FocusNode _keyboardFocusNode = FocusNode();
+  bool _showShortcuts = false;
 
   @override
   void initState() {
@@ -88,6 +93,35 @@ class _MirrorViewState extends State<MirrorView> {
     }
   }
 
+  void _sendText(String text) {
+    if (text.isEmpty) return;
+    _sendInput({
+      'type': 'type_text',
+      'text': text,
+    });
+  }
+
+  void _sendShortcut(String shortcutName) {
+    _sendInput({
+      'type': 'shortcut',
+      'name': shortcutName,
+    });
+  }
+
+  void _toggleKeyboard() {
+    if (_keyboardFocusNode.hasFocus) {
+      _keyboardFocusNode.unfocus();
+    } else {
+      _keyboardFocusNode.requestFocus();
+    }
+  }
+
+  void _toggleShortcuts() {
+    setState(() {
+      _showShortcuts = !_showShortcuts;
+    });
+  }
+
   void _handlePointerEvent(Offset localPosition, Size renderSize, String type, {String? button}) {
     if (renderSize.width <= 0 || renderSize.height <= 0) return;
 
@@ -125,6 +159,8 @@ class _MirrorViewState extends State<MirrorView> {
   @override
   void dispose() {
     _socket?.close();
+    _textController.dispose();
+    _keyboardFocusNode.dispose();
     super.dispose();
   }
 
@@ -191,6 +227,29 @@ class _MirrorViewState extends State<MirrorView> {
                     ),
             ),
 
+            // Hidden TextField to hook into mobile soft keyboard
+            Positioned(
+              left: -9999,
+              top: -9999,
+              child: SizedBox(
+                width: 1,
+                height: 1,
+                child: TextField(
+                  controller: _textController,
+                  focusNode: _keyboardFocusNode,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  keyboardType: TextInputType.text,
+                  onChanged: (val) {
+                    if (val.isNotEmpty) {
+                      _sendText(val);
+                      _textController.clear();
+                    }
+                  },
+                ),
+              ),
+            ),
+
             // Minimalist Floating Top Control Bar
             Positioned(
               top: 12,
@@ -236,6 +295,67 @@ class _MirrorViewState extends State<MirrorView> {
                       foregroundColor: Colors.white,
                     ),
                     onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+
+            // Floating Bottom Control Dock & Shortcut Bar
+            Positioned(
+              bottom: 16,
+              left: 16,
+              right: 16,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_showShortcuts) ...[
+                    ShortcutBar(
+                      onShortcutPressed: _sendShortcut,
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(color: Colors.white24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.4),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(
+                              Icons.keyboard,
+                              color: _keyboardFocusNode.hasFocus
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.white,
+                            ),
+                            tooltip: 'Toggle Soft Keyboard',
+                            onPressed: _toggleKeyboard,
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: Icon(
+                              Icons.grid_view,
+                              color: _showShortcuts
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.white,
+                            ),
+                            tooltip: 'Toggle Shortcuts Bar',
+                            onPressed: _toggleShortcuts,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
