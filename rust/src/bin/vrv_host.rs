@@ -48,11 +48,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Ready for Android & remote streaming connections...");
     println!("==================================================");
 
-    let test_cap = ScreenCapturer::new()?;
-    println!(
-        "🖥️ Primary Screen detected: {}x{}",
-        test_cap.screen_width, test_cap.screen_height
-    );
+    let screen_w = unsafe { windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics(windows::Win32::UI::WindowsAndMessaging::SM_CXSCREEN) };
+    let screen_h = unsafe { windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics(windows::Win32::UI::WindowsAndMessaging::SM_CYSCREEN) };
+    println!("🖥️ Primary Screen detected: {}x{}", screen_w, screen_h);
 
     while let Ok((stream, peer_addr)) = listener.accept().await {
         println!("🔗 New client connected from: {}", peer_addr);
@@ -73,63 +71,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn handle_connection(
     stream: TcpStream,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    println!("🤝 Starting WebSocket handshake...");
     let ws_stream = accept_async(stream).await?;
-    let capturer = ScreenCapturer::new()?;
+    println!("✅ WebSocket handshake completed!");
+    let capturer = ScreenCapturer::new().map_err(|e| format!("Capturer init failed: {}", e))?;
+    println!("✅ Screen capturer initialized!");
     let screen_w = capturer.screen_width;
     let screen_h = capturer.screen_height;
 
-    let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+    let (ws_sender, mut ws_receiver) = ws_stream.split();
+    let ws_sender = std::sync::Arc::new(tokio::sync::Mutex::new(ws_sender));
 
-    let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<()>(2);
-    let shutdown_tx_clone = shutdown_tx.clone();
-    let shutdown_tx_clip = shutdown_tx.clone();
+    let is_running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
 
-    let (out_msg_tx, mut out_msg_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
-
-    // 1. Task: Outgoing WebSocket message sender (handles both binary frames and text clipboard sync)
-    let send_task = tokio::spawn(async move {
-        while let Some(msg) = out_msg_rx.recv().await {
-            if ws_sender.send(msg).await.is_err() {
-                let _ = shutdown_tx.send(()).await;
-                break;
-            }
-        }
-    });
-
-    let out_msg_tx_frames = out_msg_tx.clone();
-    // 2. Task: Stream JPEG frames at ~30 FPS
+    let is_running_frame = is_running.clone();
+    let ws_sender_frame = ws_sender.clone();
+    // 1. Task: Stream JPEG frames at ~30 FPS
     let frame_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(35));
-        loop {
-            tokio::select! {
-                _ = shutdown_rx.recv() => {
-                    break;
-                }
-                _ = interval.tick() => {
-                    match capturer.capture_jpeg(60, 1024) {
-                        Ok(jpeg_bytes) => {
-                            if out_msg_tx_frames.send(Message::Binary(jpeg_bytes.into())).is_err() {
-                                break;
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Capture error: {}", e);
-                            tokio::time::sleep(Duration::from_millis(100)).await;
-                        }
+        while is_running_frame.load(std::sync::atomic::Ordering::Relaxed) {
+            interval.tick().await;
+            match capturer.capture_jpeg(60, 1024) {
+                Ok(jpeg_bytes) => {
+                    let mut sender = ws_sender_frame.lock().await;
+                    if sender.send(Message::Binary(jpeg_bytes.into())).await.is_err() {
+                        is_running_frame.store(false, std::sync::atomic::Ordering::Relaxed);
+                        break;
                     }
+                }
+                Err(e) => {
+                    eprintln!("Capture error: {}", e);
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }
         }
     });
 
-    // 3. Task: Clipboard monitor loop
-    // Checks GetClipboardSequenceNumber() every ~500ms.
-    // If changed, sends {"type": "clipboard_sync", "text": "..."} to connected client.
-    let out_msg_tx_clip = out_msg_tx.clone();
+    // 2. Task: Clipboard monitor loop
+    let is_running_clip = is_running.clone();
+    let ws_sender_clip = ws_sender.clone();
     let clipboard_task = tokio::spawn(async move {
         let mut last_seq = get_clipboard_sequence_number();
         let mut interval = tokio::time::interval(Duration::from_millis(500));
-        loop {
+        while is_running_clip.load(std::sync::atomic::Ordering::Relaxed) {
             interval.tick().await;
             let current_seq = get_clipboard_sequence_number();
             if current_seq != last_seq {
@@ -139,11 +123,13 @@ async fn handle_connection(
                         "type": "clipboard_sync",
                         "text": text
                     });
-                    if out_msg_tx_clip
+                    let mut sender = ws_sender_clip.lock().await;
+                    if sender
                         .send(Message::Text(sync_msg.to_string().into()))
+                        .await
                         .is_err()
                     {
-                        let _ = shutdown_tx_clip.send(()).await;
+                        is_running_clip.store(false, std::sync::atomic::Ordering::Relaxed);
                         break;
                     }
                 }
@@ -151,9 +137,13 @@ async fn handle_connection(
         }
     });
 
-    // 4. Task: Receive and inject input events
+    // 3. Task: Receive and inject input events
+    let is_running_input = is_running.clone();
     let input_task = tokio::spawn(async move {
         while let Some(msg) = ws_receiver.next().await {
+            if !is_running_input.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
             match msg {
                 Ok(Message::Text(text)) => {
                     if let Ok(input) = serde_json::from_str::<ClientInput>(&text) {
@@ -241,25 +231,21 @@ async fn handle_connection(
                     }
                 }
                 Ok(Message::Close(_)) => {
-                    let _ = shutdown_tx_clone.send(()).await;
+                    is_running_input.store(false, std::sync::atomic::Ordering::Relaxed);
                     break;
                 }
                 Err(e) => {
                     eprintln!("WebSocket read error: {:?}", e);
-                    let _ = shutdown_tx_clone.send(()).await;
+                    is_running_input.store(false, std::sync::atomic::Ordering::Relaxed);
                     break;
                 }
                 _ => {}
             }
         }
+        is_running_input.store(false, std::sync::atomic::Ordering::Relaxed);
     });
 
-    let _ = tokio::select! {
-        _ = frame_task => {},
-        _ = input_task => {},
-        _ = clipboard_task => {},
-        _ = send_task => {},
-    };
+    let _ = tokio::join!(frame_task, clipboard_task, input_task);
 
     Ok(())
 }

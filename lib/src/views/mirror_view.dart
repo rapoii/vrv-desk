@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../widgets/shortcut_bar.dart';
 
 class MirrorView extends StatefulWidget {
@@ -58,6 +58,8 @@ class _MirrorViewState extends State<MirrorView> {
               _currentFrame = Uint8List.fromList(data);
               _frameCount++;
             });
+          } else if (data is String) {
+            _handleTextMessage(data);
           }
         },
         onError: (err) {
@@ -106,6 +108,61 @@ class _MirrorViewState extends State<MirrorView> {
       'type': 'shortcut',
       'name': shortcutName,
     });
+  }
+
+  Future<void> _handleTextMessage(String message) async {
+    try {
+      final json = jsonDecode(message);
+      if (json is Map<String, dynamic>) {
+        if (json['type'] == 'clipboard_sync' && json['text'] is String) {
+          final text = json['text'] as String;
+          await Clipboard.setData(ClipboardData(text: text));
+          if (mounted) {
+            final preview = text.length > 30 ? '${text.substring(0, 30)}...' : text;
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('📋 Copied from PC: $preview'),
+                duration: const Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _pasteToPc() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text;
+    if (text != null && text.isNotEmpty) {
+      _sendInput({
+        'type': 'clipboard_text',
+        'text': text,
+      });
+      if (mounted) {
+        final preview = text.length > 30 ? '${text.substring(0, 30)}...' : text;
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('📋 Pasted to PC: $preview'),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Clipboard is empty'),
+            duration: Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   void _toggleKeyboard() {
@@ -352,6 +409,15 @@ class _MirrorViewState extends State<MirrorView> {
                             ),
                             tooltip: 'Toggle Shortcuts Bar',
                             onPressed: _toggleShortcuts,
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.content_paste,
+                              color: Colors.white,
+                            ),
+                            tooltip: 'Paste Phone Clipboard to PC',
+                            onPressed: _pasteToPc,
                           ),
                         ],
                       ),
