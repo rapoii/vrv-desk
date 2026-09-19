@@ -101,7 +101,7 @@ fn test_live_or_fallback_capturer_initialization() {
     let p = packet.unwrap();
     assert!(is_audio_packet(&p));
     let header = decode_audio_packet(&p).expect("Packet should be valid VAUD");
-    assert_eq!(header.format, AUDIO_FORMAT_PCM_S16LE);
+    assert_eq!(header.format, capturer.format);
     assert_eq!(header.channels, capturer.channels);
     assert_eq!(header.sample_rate, capturer.sample_rate);
 }

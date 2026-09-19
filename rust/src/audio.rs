@@ -8,6 +8,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use opus::{Application, Bitrate, Channels, Encoder};
+
 #[cfg(windows)]
 use windows::core::GUID;
 #[cfg(windows)]
@@ -20,6 +22,10 @@ pub const AUDIO_MAGIC: &[u8; 4] = b"VAUD";
 
 /// Standard format tag for raw signed 16-bit PCM little-endian
 pub const AUDIO_FORMAT_PCM_S16LE: u8 = 0x01;
+/// Format alias for raw PCM
+pub const AUDIO_FORMAT_PCM: u8 = 0x01;
+/// Format tag for compressed Opus frames
+pub const AUDIO_FORMAT_OPUS: u8 = 0x02;
 
 /// Audio packet header information parsed from a `VAUD` packet.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +92,101 @@ pub fn decode_audio_packet(packet: &[u8]) -> Option<AudioPacketHeader> {
     })
 }
 
+/// Real-time Opus audio encoder buffering PCM samples into 20ms frames
+/// and producing binary VAUD format 0x02 packets.
+pub struct OpusAudioEncoder {
+    encoder: Encoder,
+    sample_rate: u32,
+    channels: u8,
+    pcm_accumulator: Vec<i16>,
+    frame_samples: usize, // e.g. 960 samples per channel for 20ms at 48kHz
+}
+
+impl OpusAudioEncoder {
+    /// Creates a new Opus audio encoder.
+    ///
+    /// - `sample_rate`: Sampling rate (default typically 48000 Hz)
+    /// - `channels`: 1 for mono, 2 for stereo
+    /// - `bitrate_bps`: Target bitrate in bits per second (e.g. 64000)
+    pub fn new(sample_rate: u32, channels: u8, bitrate_bps: i32) -> Result<Self, String> {
+        let ch = match channels {
+            1 => Channels::Mono,
+            2 => Channels::Stereo,
+            _ => return Err(format!("Unsupported channel count for Opus: {}", channels)),
+        };
+
+        let mut encoder = Encoder::new(sample_rate, ch, Application::Audio)
+            .map_err(|e| format!("Failed to create Opus encoder: {}", e))?;
+        encoder
+            .set_bitrate(Bitrate::Bits(bitrate_bps))
+            .map_err(|e| format!("Failed to set Opus bitrate: {}", e))?;
+
+        // 20ms frame = (sample_rate * 20) / 1000 samples per channel
+        let frame_samples = (sample_rate as usize * 20) / 1000;
+        let capacity = frame_samples * (channels as usize) * 2;
+
+        Ok(Self {
+            encoder,
+            sample_rate,
+            channels,
+            pcm_accumulator: Vec::with_capacity(capacity),
+            frame_samples,
+        })
+    }
+
+    /// Feeds raw little-endian 16-bit PCM bytes, buffers them, and encodes any complete 20ms frames.
+    /// Returns a list of complete binary `VAUD` format 2 (AUDIO_FORMAT_OPUS) packets.
+    pub fn feed_pcm_and_encode(&mut self, pcm_bytes: &[u8]) -> Result<Vec<Vec<u8>>, String> {
+        if pcm_bytes.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Convert LE bytes to i16 samples
+        let num_samples = pcm_bytes.len() / 2;
+        let mut samples = Vec::with_capacity(num_samples);
+        for chunk in pcm_bytes.chunks_exact(2) {
+            let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
+            samples.push(sample);
+        }
+        self.pcm_accumulator.extend(samples);
+
+        let samples_per_packet = self.frame_samples * (self.channels as usize);
+        let mut packets = Vec::new();
+
+        while self.pcm_accumulator.len() >= samples_per_packet {
+            let frame = &self.pcm_accumulator[..samples_per_packet];
+            let mut opus_buf = vec![0u8; 1024];
+
+            let len = self
+                .encoder
+                .encode(frame, &mut opus_buf)
+                .map_err(|e| format!("Opus encode error: {}", e))?;
+
+            opus_buf.truncate(len);
+
+            let vaud_packet = encode_audio_packet(
+                AUDIO_FORMAT_OPUS,
+                self.channels,
+                self.sample_rate as u16,
+                &opus_buf,
+            );
+            packets.push(vaud_packet);
+
+            self.pcm_accumulator.drain(..samples_per_packet);
+        }
+
+        Ok(packets)
+    }
+
+    pub fn channels(&self) -> u8 {
+        self.channels
+    }
+
+    pub fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+}
+
 /// Capturer for loopback system audio.
 pub struct AudioLoopbackCapturer {
     receiver: std::sync::mpsc::Receiver<Vec<u8>>,
@@ -94,39 +195,70 @@ pub struct AudioLoopbackCapturer {
     pub channels: u8,
     pub sample_rate: u16,
     pub is_mock: bool,
+    pub format: u8,
 }
 
 impl AudioLoopbackCapturer {
     /// Creates and starts a new audio loopback capturer.
     ///
+    /// By default, attempts to initialize an Opus audio encoder (AUDIO_FORMAT_OPUS = 0x02).
+    /// If Opus fails to initialize, gracefully falls back to raw PCM (AUDIO_FORMAT_PCM = 0x01).
     /// On Windows, attempts WASAPI loopback capture on the default render device.
-    /// If device acquisition fails, or on non-Windows platforms, falls back to a silent mock stream.
+    /// If device acquisition fails, or on non-Windows platforms, falls back to a mock stream.
     pub fn new() -> Self {
+        Self::new_with_options(true)
+    }
+
+    /// Creates an audio capturer with an option to enable/disable Opus compression.
+    pub fn new_with_options(use_opus: bool) -> Self {
         #[cfg(windows)]
         {
-            match Self::try_init_wasapi() {
+            match Self::try_init_wasapi(use_opus) {
                 Ok(capturer) => capturer,
                 Err(err) => {
                     eprintln!(
                         "WASAPI loopback capture unavailable ({}), using fallback mock capturer",
                         err
                     );
-                    Self::new_mock(2, 48000)
+                    Self::new_mock_with_options(2, 48000, use_opus)
                 }
             }
         }
 
         #[cfg(not(windows))]
         {
-            Self::new_mock(2, 48000)
+            Self::new_mock_with_options(2, 48000, use_opus)
         }
     }
 
-    /// Creates a mock silent audio capturer (useful for tests or fallback).
+    /// Creates a mock audio capturer (useful for tests or fallback).
     pub fn new_mock(channels: u8, sample_rate: u16) -> Self {
+        Self::new_mock_with_options(channels, sample_rate, true)
+    }
+
+    /// Creates a mock audio capturer with Opus toggle.
+    pub fn new_mock_with_options(channels: u8, sample_rate: u16, use_opus: bool) -> Self {
         let (sender, receiver) = std::sync::mpsc::sync_channel::<Vec<u8>>(32);
         let is_running = Arc::new(AtomicBool::new(true));
         let is_running_clone = is_running.clone();
+
+        let mut encoder_opt = if use_opus {
+            match OpusAudioEncoder::new(sample_rate as u32, channels, 64_000) {
+                Ok(enc) => Some(enc),
+                Err(e) => {
+                    eprintln!("Failed to init Opus encoder for mock capturer (falling back to PCM): {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        let active_format = if encoder_opt.is_some() {
+            AUDIO_FORMAT_OPUS
+        } else {
+            AUDIO_FORMAT_PCM_S16LE
+        };
 
         let join_handle = std::thread::Builder::new()
             .name("audio_loopback_mock".to_string())
@@ -137,14 +269,24 @@ impl AudioLoopbackCapturer {
                 let silent_pcm = vec![0u8; bytes_per_frame];
 
                 while is_running_clone.load(Ordering::Relaxed) {
-                    let packet = encode_audio_packet(
-                        AUDIO_FORMAT_PCM_S16LE,
-                        channels,
-                        sample_rate,
-                        &silent_pcm,
-                    );
-                    if sender.send(packet).is_err() {
-                        break;
+                    if let Some(ref mut enc) = encoder_opt {
+                        if let Ok(packets) = enc.feed_pcm_and_encode(&silent_pcm) {
+                            for packet in packets {
+                                if sender.send(packet).is_err() {
+                                    return;
+                                }
+                            }
+                        }
+                    } else {
+                        let packet = encode_audio_packet(
+                            AUDIO_FORMAT_PCM_S16LE,
+                            channels,
+                            sample_rate,
+                            &silent_pcm,
+                        );
+                        if sender.send(packet).is_err() {
+                            break;
+                        }
                     }
                     std::thread::sleep(Duration::from_millis(20));
                 }
@@ -158,6 +300,7 @@ impl AudioLoopbackCapturer {
             channels,
             sample_rate,
             is_mock: true,
+            format: active_format,
         }
     }
 
@@ -172,12 +315,12 @@ impl AudioLoopbackCapturer {
     }
 
     #[cfg(windows)]
-    fn try_init_wasapi() -> Result<Self, String> {
+    fn try_init_wasapi(use_opus: bool) -> Result<Self, String> {
         let (sender, receiver) = std::sync::mpsc::sync_channel::<Vec<u8>>(64);
         let is_running = Arc::new(AtomicBool::new(true));
         let is_running_clone = is_running.clone();
 
-        let (init_tx, init_rx) = std::sync::mpsc::channel::<Result<(u8, u16), String>>();
+        let (init_tx, init_rx) = std::sync::mpsc::channel::<Result<(u8, u16, u8), String>>();
 
         let join_handle = std::thread::Builder::new()
             .name("audio_loopback_wasapi".to_string())
@@ -186,7 +329,7 @@ impl AudioLoopbackCapturer {
                     let coinit_res = CoInitializeEx(None, COINIT_MULTITHREADED);
                     let should_uninit = coinit_res.is_ok();
 
-                    let res = run_wasapi_capture_loop(sender, is_running_clone, &init_tx);
+                    let res = run_wasapi_capture_loop(sender, is_running_clone, &init_tx, use_opus);
                     if let Err(e) = res {
                         let _ = init_tx.send(Err(e));
                     }
@@ -198,7 +341,7 @@ impl AudioLoopbackCapturer {
             })
             .map_err(|e| format!("Failed to spawn audio capture thread: {}", e))?;
 
-        let (channels, sample_rate) = init_rx
+        let (channels, sample_rate, format) = init_rx
             .recv_timeout(Duration::from_secs(3))
             .map_err(|e| format!("Audio capturer initialization timeout: {}", e))?
             .map_err(|e| format!("Audio capturer initialization failed: {}", e))?;
@@ -210,6 +353,7 @@ impl AudioLoopbackCapturer {
             channels,
             sample_rate,
             is_mock: false,
+            format,
         })
     }
 }
@@ -233,7 +377,8 @@ impl Drop for AudioLoopbackCapturer {
 unsafe fn run_wasapi_capture_loop(
     sender: std::sync::mpsc::SyncSender<Vec<u8>>,
     is_running: Arc<AtomicBool>,
-    init_tx: &std::sync::mpsc::Sender<Result<(u8, u16), String>>,
+    init_tx: &std::sync::mpsc::Sender<Result<(u8, u16, u8), String>>,
+    use_opus: bool,
 ) -> Result<(), String> {
     let enumerator: IMMDeviceEnumerator =
         CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
@@ -317,8 +462,26 @@ unsafe fn run_wasapi_capture_loop(
         .Start()
         .map_err(|e| format!("IAudioClient::Start failed: {:?}", e))?;
 
+    let mut encoder_opt = if use_opus {
+        match OpusAudioEncoder::new(sample_rate as u32, channels, 64_000) {
+            Ok(enc) => Some(enc),
+            Err(e) => {
+                eprintln!("Failed to init Opus encoder for WASAPI capture (falling back to PCM): {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let active_format = if encoder_opt.is_some() {
+        AUDIO_FORMAT_OPUS
+    } else {
+        AUDIO_FORMAT_PCM_S16LE
+    };
+
     // Signal initialization success to parent thread
-    let _ = init_tx.send(Ok((channels, sample_rate)));
+    let _ = init_tx.send(Ok((channels, sample_rate, active_format)));
 
     let mut pcm_out_buffer: Vec<u8> = Vec::with_capacity(8192);
 
@@ -374,13 +537,21 @@ unsafe fn run_wasapi_capture_loop(
                 }
 
                 if !pcm_out_buffer.is_empty() {
-                    let packet = encode_audio_packet(
-                        AUDIO_FORMAT_PCM_S16LE,
-                        channels,
-                        sample_rate,
-                        &pcm_out_buffer,
-                    );
-                    let _ = sender.try_send(packet);
+                    if let Some(ref mut enc) = encoder_opt {
+                        if let Ok(packets) = enc.feed_pcm_and_encode(&pcm_out_buffer) {
+                            for packet in packets {
+                                let _ = sender.try_send(packet);
+                            }
+                        }
+                    } else {
+                        let packet = encode_audio_packet(
+                            AUDIO_FORMAT_PCM_S16LE,
+                            channels,
+                            sample_rate,
+                            &pcm_out_buffer,
+                        );
+                        let _ = sender.try_send(packet);
+                    }
                 }
             }
 

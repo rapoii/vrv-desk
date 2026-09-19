@@ -15,6 +15,7 @@ import java.util.concurrent.Executors
 class MainActivity : FlutterActivity() {
     private val channelName = "com.vrv.desk/audio"
     private var audioTrack: AudioTrack? = null
+    private var opusDecoder: OpusAudioDecoder? = null
     private var isMuted: Boolean = false
     private var currentSampleRate: Int = 0
     private var currentChannels: Int = 0
@@ -23,6 +24,7 @@ class MainActivity : FlutterActivity() {
     private var nonZeroChunksWritten: Long = 0
     private var peakAmplitude: Int = 0
     private var totalBytesWritten: Long = 0
+    private var opusFramesDecoded: Long = 0
 
     companion object {
         private const val TAG = "AudioTrackNative"
@@ -41,9 +43,15 @@ class MainActivity : FlutterActivity() {
                 }
                 "write" -> {
                     val data = call.argument<ByteArray>("data")
+                    val format = call.argument<Int>("format") ?: 1
                     if (data != null) {
                         audioExecutor.execute {
-                            writeAudioData(data)
+                            if (format == 2) {
+                                opusFramesDecoded++
+                                opusDecoder?.decode(data)
+                            } else {
+                                writeAudioData(data)
+                            }
                         }
                         result.success(true)
                     } else {
@@ -126,6 +134,24 @@ class MainActivity : FlutterActivity() {
             audioTrack = track
             currentSampleRate = sampleRate
             currentChannels = channels
+
+            // Initialize hardware Opus decoder
+            try {
+                val decoder = OpusAudioDecoder(sampleRate, channels) { pcmChunk ->
+                    writeAudioData(pcmChunk)
+                }
+                if (decoder.init()) {
+                    opusDecoder = decoder
+                    Log.i(TAG, "OpusAudioDecoder attached to AudioTrack")
+                } else {
+                    Log.w(TAG, "OpusAudioDecoder init failed; falling back to PCM")
+                    opusDecoder = null
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed creating Opus decoder", e)
+                opusDecoder = null
+            }
+
             Log.i(TAG, "AudioTrack initialized successfully (sampleRate=$sampleRate, channels=$channels, bufferSize=$bufferSize)")
             return true
         } catch (e: Exception) {
@@ -195,6 +221,8 @@ class MainActivity : FlutterActivity() {
     @Synchronized
     private fun stopAudioTrack() {
         try {
+            opusDecoder?.stop()
+            opusDecoder = null
             audioTrack?.let { track ->
                 if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
                     track.pause()

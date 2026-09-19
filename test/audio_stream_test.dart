@@ -88,7 +88,7 @@ void main() {
       expect(writeRes, isTrue);
       expect(log.length, equals(2));
       expect(log[1].method, equals('write'));
-      expect(log[1].arguments, equals({'data': pcm}));
+      expect(log[1].arguments, equals({'data': pcm, 'format': 1}));
 
       // Feed PCM with new sample rate -> should auto-reinit
       final pcm2 = Uint8List.fromList([5, 6, 7, 8]);
@@ -99,6 +99,7 @@ void main() {
       expect(log[2].method, equals('init'));
       expect(log[2].arguments, equals({'sampleRate': 48000, 'channels': 2}));
       expect(log[3].method, equals('write'));
+      expect(log[3].arguments, equals({'data': pcm2, 'format': 1}));
 
       // Mute toggle
       await player.setMuted(true);
@@ -139,6 +140,29 @@ void main() {
       expect(player.currentChannels, equals(2));
       expect(log.any((call) => call.method == 'init'), isTrue);
       expect(log.any((call) => call.method == 'write'), isTrue);
+    });
+
+    test('handleVaudPacket handles Opus compressed frame (format 0x02)', () async {
+      final player = AudioStreamPlayer(
+        channel: const MethodChannel(channelName),
+        enablePlatformCalls: true,
+      );
+
+      final opusPacket = Uint8List.fromList([
+        0x56, 0x41, 0x55, 0x44, // VAUD
+        0x02,                   // Format OPUS
+        0x02,                   // Channels: stereo (2)
+        0x80, 0xBB,             // Sample rate: 48000
+        0xFC, 0x00, 0x12, 0x34  // Opus payload
+      ]);
+
+      final ok = await player.handleVaudPacket(opusPacket);
+      expect(ok, isTrue);
+      expect(player.currentSampleRate, equals(48000));
+      expect(player.currentChannels, equals(2));
+      final writeCall = log.firstWhere((call) => call.method == 'write');
+      expect(writeCall.arguments['format'], equals(2));
+      expect(writeCall.arguments['data'], equals(Uint8List.fromList([0xFC, 0x00, 0x12, 0x34])));
     });
 
     test('Fallback mode when enablePlatformCalls is false (e.g. desktop/unit test default)', () async {

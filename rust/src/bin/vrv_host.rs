@@ -398,8 +398,8 @@ where
     let audio_task = tokio::spawn(async move {
         let mut capturer = AudioLoopbackCapturer::new();
         println!(
-            "🔊 Audio capturer started (channels: {}, rate: {}, mock: {})",
-            capturer.channels, capturer.sample_rate, capturer.is_mock
+            "🔊 Audio capturer started (format: 0x{:02x}, channels: {}, rate: {}, mock: {})",
+            capturer.format, capturer.channels, capturer.sample_rate, capturer.is_mock
         );
 
         while is_running_audio.load(std::sync::atomic::Ordering::Relaxed) {

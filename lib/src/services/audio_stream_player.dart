@@ -6,6 +6,9 @@ import 'package:flutter/services.dart';
 class AudioFormatTag {
   /// Standard signed 16-bit PCM little-endian.
   static const int pcmS16le = 0x01;
+
+  /// Compressed Opus audio frame (RFC 6716).
+  static const int opus = 0x02;
 }
 
 /// Information parsed from a binary VAUD packet header.
@@ -159,6 +162,7 @@ class AudioStreamPlayer {
     try {
       final res = await _channel.invokeMethod<bool>('write', {
         'data': pcm,
+        'format': format,
       });
       return res ?? false;
     } catch (e) {
