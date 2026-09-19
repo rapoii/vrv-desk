@@ -1,11 +1,14 @@
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
+use std::env;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 
+use mirror_core::auth::AuthGatekeeper;
 use mirror_core::gdi_capture::ScreenCapturer;
 use mirror_core::platform::windows_input::{
     get_clipboard_sequence_number, get_clipboard_text, inject_input, inject_shortcut,
@@ -38,18 +41,69 @@ enum ClientInput {
     ClipboardText { text: String },
 }
 
+fn parse_pin_arg() -> Option<String> {
+    let args: Vec<String> = env::args().collect();
+    for i in 1..args.len() {
+        if args[i] == "--pin" && i + 1 < args.len() {
+            return Some(args[i + 1].clone());
+        }
+    }
+    None
+}
+
+fn get_or_generate_pin() -> String {
+    if let Some(pin) = parse_pin_arg() {
+        return pin;
+    }
+    if let Ok(pin) = env::var("VRV_PIN") {
+        if !pin.trim().is_empty() {
+            return pin.trim().to_string();
+        }
+    }
+    use rand::Rng;
+    let pin_num: u32 = rand::thread_rng().gen_range(100_000..=999_999);
+    format!("{:06}", pin_num)
+}
+
+fn format_pin_display(pin: &str) -> String {
+    if pin.len() == 6 {
+        format!("{} {}", &pin[..3], &pin[3..])
+    } else {
+        pin.to_string()
+    }
+}
+
+fn get_host_name() -> String {
+    env::var("COMPUTERNAME")
+        .or_else(|_| env::var("HOSTNAME"))
+        .unwrap_or_else(|_| "Host-PC".to_string())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let pin = Arc::new(get_or_generate_pin());
+    let host_name = get_host_name();
     let addr: SocketAddr = "0.0.0.0:53211".parse()?;
     let listener = TcpListener::bind(&addr).await?;
 
-    println!("==================================================");
+    println!("=================================================");
+    println!("🔐 Host Ready!");
+    println!("📱 Session PIN: {}", format_pin_display(&pin));
+    println!("🌐 Listening on ws://0.0.0.0:53211");
+    println!("=================================================");
     println!("⚡ VrV Desk Host Engine running on {}", addr);
     println!("Ready for Android & remote streaming connections...");
-    println!("==================================================");
 
-    let screen_w = unsafe { windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics(windows::Win32::UI::WindowsAndMessaging::SM_CXSCREEN) };
-    let screen_h = unsafe { windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics(windows::Win32::UI::WindowsAndMessaging::SM_CYSCREEN) };
+    let screen_w = unsafe {
+        windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics(
+            windows::Win32::UI::WindowsAndMessaging::SM_CXSCREEN,
+        )
+    };
+    let screen_h = unsafe {
+        windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics(
+            windows::Win32::UI::WindowsAndMessaging::SM_CYSCREEN,
+        )
+    };
     println!("🖥️ Primary Screen detected: {}x{}", screen_w, screen_h);
 
     while let Ok((stream, peer_addr)) = listener.accept().await {
@@ -57,8 +111,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let _ = stream.set_nodelay(true);
 
+        let pin_clone = pin.clone();
+        let host_name_clone = host_name.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_connection(stream).await {
+            if let Err(e) = handle_connection(stream, peer_addr, pin_clone, host_name_clone).await {
                 eprintln!("Connection error with {}: {:?}", peer_addr, e);
             }
             println!("🔌 Client {} disconnected.", peer_addr);
@@ -70,18 +126,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn handle_connection(
     stream: TcpStream,
+    peer_addr: SocketAddr,
+    pin: Arc<String>,
+    host_name: String,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("🤝 Starting WebSocket handshake...");
     let ws_stream = accept_async(stream).await?;
     println!("✅ WebSocket handshake completed!");
+
+    let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+
+    // Authenticate client with PIN gatekeeper before starting capturer or streaming tasks
+    let _session_token = AuthGatekeeper::authenticate_stream(
+        &mut ws_sender,
+        &mut ws_receiver,
+        &pin,
+        &host_name,
+    )
+    .await?;
+
+    println!("✅ Client {} authenticated successfully!", peer_addr);
+
+    // Initialize capturer only after successful authentication
     let capturer = ScreenCapturer::new().map_err(|e| format!("Capturer init failed: {}", e))?;
     println!("✅ Screen capturer initialized!");
     let screen_w = capturer.screen_width;
     let screen_h = capturer.screen_height;
 
-    let (ws_sender, mut ws_receiver) = ws_stream.split();
     let ws_sender = std::sync::Arc::new(tokio::sync::Mutex::new(ws_sender));
-
     let is_running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
 
     let is_running_frame = is_running.clone();

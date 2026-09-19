@@ -62,7 +62,11 @@ class _HomeViewState extends State<HomeView> {
           } else {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => MirrorView(hostIp: device.ipAddress, port: device.port),
+                builder: (_) => MirrorView(
+                  hostIp: device.ipAddress,
+                  port: device.port,
+                  initialPin: pin,
+                ),
               ),
             );
           }
@@ -72,10 +76,11 @@ class _HomeViewState extends State<HomeView> {
   }
 
   void _showDirectIpDialog() {
-    final controller = TextEditingController(text: '10.0.2.2');
+    final ipController = TextEditingController(text: '10.0.2.2');
+    final pinController = TextEditingController();
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Connect to PC / Host'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -87,7 +92,8 @@ class _HomeViewState extends State<HomeView> {
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: controller,
+              key: const Key('direct_ip_field'),
+              controller: ipController,
               decoration: const InputDecoration(
                 labelText: 'Host IP Address',
                 border: OutlineInputBorder(),
@@ -95,22 +101,39 @@ class _HomeViewState extends State<HomeView> {
               ),
               keyboardType: TextInputType.url,
             ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('direct_pin_field'),
+              controller: pinController,
+              decoration: const InputDecoration(
+                labelText: 'Host PIN (Optional, 6 digits)',
+                border: OutlineInputBorder(),
+                hintText: 'e.g. 123456',
+              ),
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+            ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
             key: const Key('dialog_connect_button'),
             onPressed: () {
-              final ip = controller.text.trim();
+              final ip = ipController.text.trim();
+              final pin = pinController.text.trim();
               if (ip.isNotEmpty) {
-                Navigator.of(context).pop();
+                Navigator.of(dialogContext).pop();
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => MirrorView(hostIp: ip, port: 53211),
+                    builder: (_) => MirrorView(
+                      hostIp: ip,
+                      port: 53211,
+                      initialPin: pin.isNotEmpty ? pin : null,
+                    ),
                   ),
                 );
               }

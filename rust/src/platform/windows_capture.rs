@@ -1,8 +1,3 @@
-#[cfg(windows)]
-use windows::Win32::Graphics::Direct3D11::*;
-#[cfg(windows)]
-use windows::Win32::Graphics::Dxgi::*;
-
 pub struct DxgiCapturer {
     pub width: u32,
     pub height: u32,

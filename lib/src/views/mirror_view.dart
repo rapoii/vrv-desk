@@ -2,16 +2,23 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../widgets/pin_dialog.dart';
 import '../widgets/shortcut_bar.dart';
+
+typedef WebSocketConnector = Future<WebSocket> Function(String url);
 
 class MirrorView extends StatefulWidget {
   final String hostIp;
   final int port;
+  final String? initialPin;
+  final WebSocketConnector? webSocketConnector;
 
   const MirrorView({
     super.key,
     required this.hostIp,
     this.port = 53211,
+    this.initialPin,
+    this.webSocketConnector,
   });
 
   @override
@@ -22,8 +29,14 @@ class _MirrorViewState extends State<MirrorView> {
   WebSocket? _socket;
   Uint8List? _currentFrame;
   bool _isConnected = false;
+  bool _isAuthenticated = false;
+  bool _isAuthenticating = false;
+  String? _authError;
+  int _remainingAttempts = 3;
+  bool _hasSentInitialPin = false;
   String _statusMessage = 'Connecting...';
   int _frameCount = 0;
+  BuildContext? _dialogContext;
 
   final TextEditingController _textController = TextEditingController();
   final FocusNode _keyboardFocusNode = FocusNode();
@@ -37,18 +50,25 @@ class _MirrorViewState extends State<MirrorView> {
 
   Future<void> _connect() async {
     setState(() {
+      _isConnected = false;
+      _isAuthenticated = false;
+      _isAuthenticating = false;
+      _authError = null;
+      _remainingAttempts = 3;
+      _hasSentInitialPin = false;
       _statusMessage = 'Connecting to ${widget.hostIp}:${widget.port}...';
     });
 
     try {
-      final ws = await WebSocket.connect(
+      final connector = widget.webSocketConnector ?? WebSocket.connect;
+      final ws = await connector(
         'ws://${widget.hostIp}:${widget.port}',
       ).timeout(const Duration(seconds: 5));
 
       _socket = ws;
       setState(() {
         _isConnected = true;
-        _statusMessage = 'Connected';
+        _statusMessage = 'Connected, waiting for host handshake...';
       });
 
       ws.listen(
@@ -91,7 +111,57 @@ class _MirrorViewState extends State<MirrorView> {
 
   void _sendInput(Map<String, dynamic> event) {
     if (_socket != null && _isConnected) {
+      if (!_isAuthenticated && event['type'] != 'auth_verify') {
+        return;
+      }
       _socket!.add(jsonEncode(event));
+    }
+  }
+
+  void _sendPin(String pin) {
+    setState(() {
+      _isAuthenticating = true;
+      _authError = null;
+    });
+    _sendInput({
+      'type': 'auth_verify',
+      'pin': pin,
+    });
+  }
+
+  void _showPinDialog() {
+    if (!mounted || _dialogContext != null) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dContext) {
+        _dialogContext = dContext;
+        return PinDialog(
+          deviceName: 'Host PC (${widget.hostIp})',
+          onSubmitted: (enteredPin) {
+            _sendPin(enteredPin);
+          },
+        );
+      },
+    ).then((_) {
+      _dialogContext = null;
+    });
+  }
+
+  void _dismissPinDialog() {
+    if (_dialogContext != null && mounted) {
+      final ctx = _dialogContext;
+      _dialogContext = null;
+      Navigator.of(ctx!).pop();
+    }
+  }
+
+  void _handleAuthRequired() {
+    if (widget.initialPin != null && widget.initialPin!.isNotEmpty && !_hasSentInitialPin) {
+      _hasSentInitialPin = true;
+      _sendPin(widget.initialPin!);
+    } else {
+      _showPinDialog();
     }
   }
 
@@ -114,7 +184,65 @@ class _MirrorViewState extends State<MirrorView> {
     try {
       final json = jsonDecode(message);
       if (json is Map<String, dynamic>) {
-        if (json['type'] == 'clipboard_sync' && json['text'] is String) {
+        final type = json['type'];
+        if (type == 'auth_required') {
+          _handleAuthRequired();
+        } else if (type == 'auth_ok') {
+          _dismissPinDialog();
+          setState(() {
+            _isAuthenticated = true;
+            _isAuthenticating = false;
+            _authError = null;
+            _statusMessage = 'Connected & Authenticated';
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Connected & Authenticated with Host PC'),
+                duration: Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } else if (type == 'auth_failed') {
+          final reason = json['reason'] as String? ?? 'Invalid PIN';
+          final remaining = json['remaining_attempts'] as int? ?? 0;
+          setState(() {
+            _authError = reason;
+            _remainingAttempts = remaining;
+            _isAuthenticating = false;
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            if (remaining <= 0) {
+              _dismissPinDialog();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Authentication failed: $reason. Connection locked.'),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 3),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+              Future.delayed(const Duration(seconds: 2), () {
+                if (mounted) {
+                  Navigator.of(context).pop();
+                }
+              });
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Authentication failed: $reason ($remaining attempts remaining)'),
+                  backgroundColor: Colors.redAccent,
+                  duration: const Duration(seconds: 3),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+              _showPinDialog();
+            }
+          }
+        } else if (type == 'clipboard_sync' && json['text'] is String) {
           final text = json['text'] as String;
           await Clipboard.setData(ClipboardData(text: text));
           if (mounted) {
@@ -230,7 +358,7 @@ class _MirrorViewState extends State<MirrorView> {
           children: [
             // Video Canvas & Interactive Touch Layer
             Positioned.fill(
-              child: _currentFrame != null
+              child: _isAuthenticated && _currentFrame != null
                   ? LayoutBuilder(
                       builder: (context, constraints) {
                         final size = Size(constraints.maxWidth, constraints.maxHeight);
@@ -254,32 +382,83 @@ class _MirrorViewState extends State<MirrorView> {
                             ),
                           ),
                         );
-
                       },
                     )
                   : Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_isConnected)
-                            const CircularProgressIndicator(color: Colors.white)
-                          else
-                            const Icon(Icons.cloud_off, size: 48, color: Colors.white54),
-                          const SizedBox(height: 16),
-                          Text(
-                            _statusMessage,
-                            style: const TextStyle(color: Colors.white70, fontSize: 14),
-                            textAlign: TextAlign.center,
-                          ),
-                          if (!_isConnected) ...[
-                            const SizedBox(height: 20),
-                            ElevatedButton.icon(
-                              onPressed: _connect,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Retry Connection'),
-                            ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_isConnected && !_isAuthenticated) ...[
+                              Icon(
+                                _authError != null ? Icons.lock_clock : Icons.lock_outline,
+                                size: 54,
+                                color: _authError != null ? Colors.orangeAccent : Colors.white70,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _isAuthenticating
+                                    ? 'Verifying PIN with Host...'
+                                    : (_authError != null
+                                        ? 'Authentication Required ($_remainingAttempts attempts left)'
+                                        : 'Authentication Required'),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              if (_authError != null) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  _authError!,
+                                  style: const TextStyle(
+                                    color: Colors.redAccent,
+                                    fontSize: 13,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                              const SizedBox(height: 20),
+                              if (_remainingAttempts > 0)
+                                ElevatedButton.icon(
+                                  key: const Key('enter_pin_overlay_button'),
+                                  onPressed: _showPinDialog,
+                                  icon: const Icon(Icons.pin),
+                                  label: const Text('Enter Host PIN'),
+                                )
+                              else
+                                const Text(
+                                  'Connection locked due to failed attempts.',
+                                  style: TextStyle(color: Colors.red, fontSize: 13),
+                                ),
+                            ] else if (_isConnected && _isAuthenticated) ...[
+                              const CircularProgressIndicator(color: Colors.white),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Authenticated! Waiting for video stream...',
+                                style: TextStyle(color: Colors.white70, fontSize: 14),
+                                textAlign: TextAlign.center,
+                              ),
+                            ] else ...[
+                              const Icon(Icons.cloud_off, size: 48, color: Colors.white54),
+                              const SizedBox(height: 16),
+                              Text(
+                                _statusMessage,
+                                style: const TextStyle(color: Colors.white70, fontSize: 14),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 20),
+                              ElevatedButton.icon(
+                                onPressed: _connect,
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Retry Connection'),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
             ),
@@ -329,12 +508,16 @@ class _MirrorViewState extends State<MirrorView> {
                           height: 8,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: _isConnected ? Colors.greenAccent : Colors.redAccent,
+                            color: !_isConnected
+                                ? Colors.redAccent
+                                : (!_isAuthenticated ? Colors.amberAccent : Colors.greenAccent),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          _isConnected ? 'LIVE (${_frameCount}f)' : 'OFFLINE',
+                          !_isConnected
+                              ? 'OFFLINE'
+                              : (!_isAuthenticated ? 'AUTH REQUIRED' : 'LIVE (${_frameCount}f)'),
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 12,

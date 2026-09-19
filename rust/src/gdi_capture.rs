@@ -132,7 +132,7 @@ impl ScreenCapturer {
             let rgb_img = image::DynamicImage::ImageRgba8(final_img).to_rgb8();
 
             let mut buffer = Cursor::new(Vec::with_capacity((final_w * final_h) as usize / 4));
-            let mut encoder = JpegEncoder::new_with_quality(&mut buffer, quality);
+            let encoder = JpegEncoder::new_with_quality(&mut buffer, quality);
             encoder.write_image(
                 rgb_img.as_raw(),
                 final_w,
