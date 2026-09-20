@@ -459,6 +459,15 @@ class AndroidHostService {
     }
   }
 
+  Future<bool> isInternalAudioSupported() async {
+    try {
+      final res = await _captureChannel.invokeMethod<bool>('isInternalAudioSupported');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> startCapture({
     int resultCode = -1, // Activity.RESULT_OK
     dynamic intentData,
@@ -466,6 +475,7 @@ class AndroidHostService {
     int height = 720,
     int bitrate = 2500000,
     int fps = 30,
+    bool enableAudio = true,
   }) async {
     try {
       final res = await _captureChannel.invokeMethod<bool>('startCapture', {
@@ -475,6 +485,7 @@ class AndroidHostService {
         'height': height,
         'bitrate': bitrate,
         'fps': fps,
+        'enableAudio': enableAudio,
       });
       return res ?? false;
     } catch (_) {

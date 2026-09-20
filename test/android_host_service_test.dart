@@ -13,10 +13,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const accessibilityChannelName = 'com.vrv.desk/accessibility';
+  const captureChannelName = 'com.vrv.desk/capture';
   final accessibilityCalls = <MethodCall>[];
+  final captureCalls = <MethodCall>[];
 
   setUp(() {
     accessibilityCalls.clear();
+    captureCalls.clear();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
       const MethodChannel(accessibilityChannelName),
@@ -38,12 +41,37 @@ void main() {
         }
       },
     );
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel(captureChannelName),
+      (MethodCall methodCall) async {
+        captureCalls.add(methodCall);
+        switch (methodCall.method) {
+          case 'isInternalAudioSupported':
+            return true;
+          case 'startCapture':
+            return true;
+          case 'stopCapture':
+            return true;
+          case 'isCapturing':
+            return true;
+          default:
+            return null;
+        }
+      },
+    );
   });
 
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
       const MethodChannel(accessibilityChannelName),
+      null,
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel(captureChannelName),
       null,
     );
   });
@@ -360,6 +388,87 @@ void main() {
       expect(decoded['os_type'], equals('android'));
       expect(decoded['port'], equals(53211));
       expect(decoded['protocol_version'], equals(1));
+    });
+
+    test('Audio Capture API: isInternalAudioSupported and startCapture pass audio flag', () async {
+      final supported = await hostService.isInternalAudioSupported();
+      expect(supported, isTrue);
+      expect(captureCalls.any((c) => c.method == 'isInternalAudioSupported'), isTrue);
+
+      await hostService.startCapture(enableAudio: true);
+      final startCall = captureCalls.firstWhere((c) => c.method == 'startCapture');
+      expect(startCall.arguments['enableAudio'], isTrue);
+    });
+
+    test('Multiplexed Streaming: broadcasts binary VAUD audio alongside VH24 video over E2EE', () async {
+      await hostService.start(
+        bindAddress: InternetAddress.loopbackIPv4,
+        port: 0,
+        pin: '123456',
+        enableUdpBeacon: false,
+      );
+
+      final ws = await WebSocket.connect('ws://127.0.0.1:${hostService.port}');
+      final msgCompleter = Completer<String>();
+      final receivedFrames = <Uint8List>[];
+
+      late E2eeTransportSession clientE2ee;
+
+      final sub = ws.listen((data) async {
+        if (data is String) {
+          final json = jsonDecode(data);
+          if (json['type'] == 'auth_required') {
+            final authVerify = jsonEncode({
+              'type': 'auth_verify',
+              'pin': '123456',
+              'e2ee': true,
+            });
+            ws.add(authVerify);
+          } else if (json['type'] == 'auth_ok') {
+            clientE2ee = E2eeTransportSession.fromToken(json['session_token']);
+            msgCompleter.complete('auth_ok');
+          }
+        } else if (data is List<int>) {
+          final decrypted = await clientE2ee.decrypt(Uint8List.fromList(data));
+          receivedFrames.add(decrypted);
+        }
+      });
+
+      await msgCompleter.future.timeout(const Duration(seconds: 2));
+
+      // 1. Emit VH24 video frame
+      final vh24Packet = Uint8List.fromList([
+        0x56, 0x48, 0x32, 0x34, // "VH24"
+        0x00, 0x00, 0x00, 0x04, // length: 4
+        0x01,                   // keyframe
+        0x00, 0x00, 0x00, 0x01, // seq: 1
+        0x65, 0x88, 0x84, 0x00, // payload
+      ]);
+      frameController!.add(vh24Packet);
+
+      // 2. Emit VAUD audio frame
+      final vaudPacket = Uint8List.fromList([
+        0x56, 0x41, 0x55, 0x44, // "VAUD"
+        0x01,                   // format: PCM S16LE
+        0x02,                   // channels: stereo
+        0x80, 0xBB,             // 48000 Hz little-endian
+        0x00, 0x01, 0x02, 0x03, // PCM audio payload
+      ]);
+      frameController!.add(vaudPacket);
+
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      expect(receivedFrames.length, equals(2));
+      // Verify first frame is VH24
+      expect(receivedFrames[0].sublist(0, 4), equals([0x56, 0x48, 0x32, 0x34]));
+      // Verify second frame is VAUD audio
+      expect(receivedFrames[1].sublist(0, 4), equals([0x56, 0x41, 0x55, 0x44]));
+      expect(receivedFrames[1][4], equals(0x01)); // PCM
+      expect(receivedFrames[1][5], equals(0x02)); // Stereo
+      expect(receivedFrames[1][6] | (receivedFrames[1][7] << 8), equals(48000));
+
+      await sub.cancel();
+      await ws.close();
     });
   });
 }

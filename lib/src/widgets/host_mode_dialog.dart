@@ -30,6 +30,7 @@ class HostModeDialog extends StatefulWidget {
 class _HostModeDialogState extends State<HostModeDialog> {
   late final AndroidHostService _hostService;
   bool _isAccessibilityEnabled = true;
+  bool _isAudioSupported = true;
   bool _isStartingOrStopping = false;
   Timer? _metricsTimer;
 
@@ -38,6 +39,7 @@ class _HostModeDialogState extends State<HostModeDialog> {
     super.initState();
     _hostService = widget.hostService ?? AndroidHostService();
     _checkAccessibility();
+    _checkAudioSupport();
     _startMetricsTimer();
   }
 
@@ -61,6 +63,15 @@ class _HostModeDialogState extends State<HostModeDialog> {
     if (mounted) {
       setState(() {
         _isAccessibilityEnabled = enabled;
+      });
+    }
+  }
+
+  Future<void> _checkAudioSupport() async {
+    final supported = await _hostService.isInternalAudioSupported();
+    if (mounted) {
+      setState(() {
+        _isAudioSupported = supported;
       });
     }
   }
@@ -196,6 +207,56 @@ class _HostModeDialogState extends State<HostModeDialog> {
                 ),
               ),
               const SizedBox(height: 12),
+            ],
+
+            // Audio capability notification: fallback warning on < Android 10 or active badge
+            if (!_isAudioSupported) ...[
+              Card(
+                key: const Key('audio_fallback_warning_card'),
+                color: Colors.blueGrey.withOpacity(0.2),
+                shape: RoundedRectangleBorder(
+                  side: const BorderSide(color: Colors.blueGrey, width: 1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.all(12.0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.volume_off, color: Colors.white70, size: 20),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Internal audio capture requires Android 10+. Video-only streaming active.',
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ] else ...[
+              Container(
+                key: const Key('audio_active_badge'),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: Colors.teal.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.teal.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.volume_up, color: Colors.greenAccent, size: 16),
+                    SizedBox(width: 6),
+                    Text(
+                      'Internal Audio (48kHz Stereo) Supported',
+                      style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
             ],
 
             // Status Card

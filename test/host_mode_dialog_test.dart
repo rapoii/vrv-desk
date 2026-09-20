@@ -12,6 +12,7 @@ class FakeAndroidHostService extends AndroidHostService {
   int _mockFrames = 0;
   int _mockAuthClients = 0;
   bool _mockAccessibility = true;
+  bool _mockAudioSupported = true;
   bool openSettingsCalled = false;
   bool startCaptureCalled = false;
   bool stopCaptureCalled = false;
@@ -22,9 +23,11 @@ class FakeAndroidHostService extends AndroidHostService {
     bool initialRunning = false,
     String initialPin = '654321',
     bool initialAccessibility = true,
+    bool initialAudioSupported = true,
   })  : _mockRunning = initialRunning,
         _mockPin = initialPin,
-        _mockAccessibility = initialAccessibility;
+        _mockAccessibility = initialAccessibility,
+        _mockAudioSupported = initialAudioSupported;
 
   @override
   bool get isRunning => _mockRunning;
@@ -42,6 +45,9 @@ class FakeAndroidHostService extends AndroidHostService {
   Future<bool> isAccessibilityEnabled() async => _mockAccessibility;
 
   @override
+  Future<bool> isInternalAudioSupported() async => _mockAudioSupported;
+
+  @override
   Future<bool> openAccessibilitySettings() async {
     openSettingsCalled = true;
     return true;
@@ -55,6 +61,7 @@ class FakeAndroidHostService extends AndroidHostService {
     int height = 720,
     int bitrate = 2500000,
     int fps = 30,
+    bool enableAudio = true,
   }) async {
     startCaptureCalled = true;
     return true;
@@ -219,12 +226,59 @@ void main() {
       );
 
       final toggleBtn = find.byKey(const Key('host_mode_toggle_button'));
+      await tester.ensureVisible(toggleBtn);
       await tester.tap(toggleBtn);
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(fakeService.stopCalled, isTrue);
       expect(fakeService.stopCaptureCalled, isTrue);
       expect(find.text('Start Broadcasting'), findsOneWidget);
+    });
+
+    testWidgets('renders audio fallback warning when OS is below Android 10', (tester) async {
+      final fakeService = FakeAndroidHostService(
+        initialRunning: false,
+        initialAudioSupported: false,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: HostModeDialog(
+              hostService: fakeService,
+              deviceId: '123456',
+              enableMetricsTimer: false,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const Key('audio_fallback_warning_card')), findsOneWidget);
+      expect(find.textContaining('Internal audio capture requires Android 10+'), findsOneWidget);
+    });
+
+    testWidgets('renders audio active badge when internal audio is supported', (tester) async {
+      final fakeService = FakeAndroidHostService(
+        initialRunning: false,
+        initialAudioSupported: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: HostModeDialog(
+              hostService: fakeService,
+              deviceId: '123456',
+              enableMetricsTimer: false,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const Key('audio_active_badge')), findsOneWidget);
+      expect(find.textContaining('Internal Audio (48kHz Stereo) Supported'), findsOneWidget);
     });
   });
 
