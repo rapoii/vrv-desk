@@ -1,14 +1,21 @@
 package com.vrvdesk.app
 
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Surface
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
 import java.util.concurrent.ExecutorService
@@ -17,6 +24,9 @@ import java.util.concurrent.Executors
 class MainActivity : FlutterActivity() {
     private val channelName = "com.vrv.desk/audio"
     private val videoChannelName = "com.vrv.desk/video"
+    private val captureChannelName = "com.vrv.desk/capture"
+    private val captureStreamChannelName = "com.vrv.desk/capture_stream"
+
     private var audioTrack: AudioTrack? = null
     private var opusDecoder: OpusAudioDecoder? = null
     private var videoTextureEntry: TextureRegistry.SurfaceTextureEntry? = null
@@ -33,13 +43,20 @@ class MainActivity : FlutterActivity() {
     private var totalBytesWritten: Long = 0
     private var opusFramesDecoded: Long = 0
 
+    // Capture & Streaming state
+    private var captureStreamSink: EventChannel.EventSink? = null
+    private var pendingCaptureResult: MethodChannel.Result? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     companion object {
-        private const val TAG = "AudioTrackNative"
+        private const val TAG = "MainActivity"
+        private const val MEDIA_PROJECTION_REQUEST_CODE = 1001
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Audio MethodChannel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "init" -> {
@@ -80,6 +97,7 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // Video MethodChannel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, videoChannelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "init" -> {
@@ -129,6 +147,131 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+
+        // Capture MethodChannel ('com.vrv.desk/capture')
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, captureChannelName).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "requestCapturePermission" -> {
+                    try {
+                        val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                        val intent = projectionManager.createScreenCaptureIntent()
+                        pendingCaptureResult = result
+                        startActivityForResult(intent, MEDIA_PROJECTION_REQUEST_CODE)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error requesting MediaProjection permission: ${e.message}", e)
+                        result.error("PERMISSION_ERROR", e.message, null)
+                    }
+                }
+                "startCapture" -> {
+                    val resultCode = call.argument<Int>("resultCode") ?: Activity.RESULT_OK
+                    val intentData = call.argument<Intent>("intentData")
+                    val width = call.argument<Int>("width") ?: 1280
+                    val height = call.argument<Int>("height") ?: 720
+                    val bitrate = call.argument<Int>("bitrate") ?: 2_500_000
+                    val fps = call.argument<Int>("fps") ?: 30
+
+                    startCaptureService(resultCode, intentData, width, height, bitrate, fps)
+                    result.success(true)
+                }
+                "stopCapture" -> {
+                    stopCaptureService()
+                    result.success(true)
+                }
+                "isCapturing" -> {
+                    result.success(MediaProjectionService.isRunning)
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+
+        // Capture EventChannel ('com.vrv.desk/capture_stream')
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, captureStreamChannelName).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    captureStreamSink = events
+                    MediaProjectionService.frameListener = { packet ->
+                        mainHandler.post {
+                            captureStreamSink?.success(packet)
+                        }
+                    }
+                    Log.i(TAG, "Capture stream listener attached")
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    captureStreamSink = null
+                    MediaProjectionService.frameListener = null
+                    Log.i(TAG, "Capture stream listener detached")
+                }
+            }
+        )
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == MEDIA_PROJECTION_REQUEST_CODE) {
+            val pending = pendingCaptureResult
+            pendingCaptureResult = null
+
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                lastProjectionResultCode = resultCode
+                lastProjectionIntentData = data
+
+                val resultMap = HashMap<String, Any>()
+                resultMap["resultCode"] = resultCode
+                resultMap["granted"] = true
+                pending?.success(resultMap)
+            } else {
+                val resultMap = HashMap<String, Any>()
+                resultMap["resultCode"] = resultCode
+                resultMap["granted"] = false
+                pending?.success(resultMap)
+            }
+        }
+    }
+
+    private var lastProjectionResultCode: Int = 0
+    private var lastProjectionIntentData: Intent? = null
+
+    private fun startCaptureService(
+        resultCode: Int,
+        intentData: Intent?,
+        width: Int,
+        height: Int,
+        bitrate: Int,
+        fps: Int
+    ) {
+        val effectiveCode = if (resultCode != 0) resultCode else lastProjectionResultCode
+        val effectiveData = intentData ?: lastProjectionIntentData
+
+        if (effectiveData == null || effectiveCode == 0) {
+            Log.e(TAG, "Cannot start capture service: MediaProjection permission intent is null")
+            return
+        }
+
+        val serviceIntent = Intent(this, MediaProjectionService::class.java).apply {
+            action = MediaProjectionService.ACTION_START
+            putExtra(MediaProjectionService.EXTRA_RESULT_CODE, effectiveCode)
+            putExtra(MediaProjectionService.EXTRA_DATA, effectiveData)
+            putExtra(MediaProjectionService.EXTRA_WIDTH, width)
+            putExtra(MediaProjectionService.EXTRA_HEIGHT, height)
+            putExtra(MediaProjectionService.EXTRA_BITRATE, bitrate)
+            putExtra(MediaProjectionService.EXTRA_FPS, fps)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+    }
+
+    private fun stopCaptureService() {
+        val serviceIntent = Intent(this, MediaProjectionService::class.java).apply {
+            action = MediaProjectionService.ACTION_STOP
+        }
+        startService(serviceIntent)
     }
 
     @Synchronized
@@ -311,6 +454,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        stopCaptureService()
         stopAudioTrack()
         disposeVideo()
         audioExecutor.shutdown()
