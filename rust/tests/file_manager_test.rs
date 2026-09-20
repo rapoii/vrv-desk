@@ -14,7 +14,10 @@ fn test_base64_roundtrip() {
 fn test_list_roots_returns_entries() {
     let (name, entries) = FileManager::list_roots().expect("list_roots should succeed");
     assert_eq!(name, "Roots");
-    assert!(!entries.is_empty(), "Should discover at least one root drive or user path");
+    assert!(
+        !entries.is_empty(),
+        "Should discover at least one root drive or user path"
+    );
 }
 
 #[test]
@@ -34,8 +37,7 @@ fn test_file_chunk_write_and_read() {
     assert_eq!(write_res.bytes_written, sample_bytes.len());
 
     // 2. Read chunk back
-    let read_res = FileManager::read_chunk(&file_str, 0, 1024)
-        .expect("read_chunk should succeed");
+    let read_res = FileManager::read_chunk(&file_str, 0, 1024).expect("read_chunk should succeed");
     assert_eq!(read_res.total_size, sample_bytes.len() as u64);
     assert!(read_res.eof);
     assert_eq!(read_res.data_b64, data_b64);

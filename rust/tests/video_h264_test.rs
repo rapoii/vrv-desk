@@ -1,6 +1,4 @@
-use mirror_core::video::{
-    H264VideoEncoder, FRAME_TYPE_DELTA, FRAME_TYPE_IDR, VIDEO_MAGIC,
-};
+use mirror_core::video::{H264VideoEncoder, FRAME_TYPE_DELTA, FRAME_TYPE_IDR, VIDEO_MAGIC};
 
 #[test]
 fn test_h264_encoder_initialization() {
@@ -31,7 +29,9 @@ fn test_h264_encode_frame_and_header() {
     );
 
     // Frame 2: Identical / static frame (should produce P-frame and be significantly smaller)
-    let packet2 = encoder.encode_rgb(640, 360, &rgb).expect("Encode frame 2 failed");
+    let packet2 = encoder
+        .encode_rgb(640, 360, &rgb)
+        .expect("Encode frame 2 failed");
     assert_eq!(&packet2[0..4], VIDEO_MAGIC);
     assert_eq!(packet2[4], FRAME_TYPE_DELTA, "Second frame should be delta");
     assert!(
@@ -47,7 +47,9 @@ fn test_h264_encode_bgra() {
     let mut encoder = H264VideoEncoder::new(320, 240, 1_500_000, 60.0).expect("Init failed");
     // BGRA format (e.g. from DXGI capture)
     let bgra = vec![255u8; 320 * 240 * 4];
-    let packet = encoder.encode_bgra(320, 240, &bgra).expect("BGRA encode failed");
+    let packet = encoder
+        .encode_bgra(320, 240, &bgra)
+        .expect("BGRA encode failed");
     assert_eq!(&packet[0..4], VIDEO_MAGIC);
     assert!(packet.len() > 8);
 }

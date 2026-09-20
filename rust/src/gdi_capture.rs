@@ -1,12 +1,12 @@
+use image::codecs::jpeg::JpegEncoder;
+use image::{ImageEncoder, RgbaImage};
+use std::io::Cursor;
+#[cfg(windows)]
+use windows::Win32::Foundation::HWND;
 #[cfg(windows)]
 use windows::Win32::Graphics::Gdi::*;
 #[cfg(windows)]
 use windows::Win32::UI::WindowsAndMessaging::*;
-#[cfg(windows)]
-use windows::Win32::Foundation::HWND;
-use std::io::Cursor;
-use image::{RgbaImage, ImageEncoder};
-use image::codecs::jpeg::JpegEncoder;
 
 #[cfg(windows)]
 pub struct ScreenCapturer {
@@ -123,7 +123,12 @@ impl ScreenCapturer {
                 .ok_or_else(|| "Failed to construct RgbaImage".to_string())?;
 
             let final_img = if final_w != w as u32 || final_h != h as u32 {
-                image::imageops::resize(&img, final_w, final_h, image::imageops::FilterType::Triangle)
+                image::imageops::resize(
+                    &img,
+                    final_w,
+                    final_h,
+                    image::imageops::FilterType::Triangle,
+                )
             } else {
                 img
             };
@@ -133,12 +138,14 @@ impl ScreenCapturer {
 
             let mut buffer = Cursor::new(Vec::with_capacity((final_w * final_h) as usize / 4));
             let encoder = JpegEncoder::new_with_quality(&mut buffer, quality);
-            encoder.write_image(
-                rgb_img.as_raw(),
-                final_w,
-                final_h,
-                image::ExtendedColorType::Rgb8,
-            ).map_err(|e| format!("JPEG encode error: {:?}", e))?;
+            encoder
+                .write_image(
+                    rgb_img.as_raw(),
+                    final_w,
+                    final_h,
+                    image::ExtendedColorType::Rgb8,
+                )
+                .map_err(|e| format!("JPEG encode error: {:?}", e))?;
 
             Ok(buffer.into_inner())
         }

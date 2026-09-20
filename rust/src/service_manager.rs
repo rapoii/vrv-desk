@@ -37,17 +37,19 @@ mod win_impl {
     use std::ptr;
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::{CloseHandle, BOOL, HANDLE, HWND};
-    use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
+    use windows::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
     use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
     use windows::Win32::System::Services::*;
     use windows::Win32::System::StationsAndDesktops::{
         CloseDesktop, OpenInputDesktop, SetThreadDesktop, DESKTOP_ACCESS_FLAGS,
         DESKTOP_CONTROL_FLAGS, DESKTOP_CREATEWINDOW, DESKTOP_ENUMERATE, DESKTOP_HOOKCONTROL,
-        DESKTOP_JOURNALPLAYBACK, DESKTOP_JOURNALRECORD, DESKTOP_READOBJECTS,
-        DESKTOP_SWITCHDESKTOP, DESKTOP_WRITEOBJECTS,
+        DESKTOP_JOURNALPLAYBACK, DESKTOP_JOURNALRECORD, DESKTOP_READOBJECTS, DESKTOP_SWITCHDESKTOP,
+        DESKTOP_WRITEOBJECTS,
     };
     use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
-    use windows::Win32::UI::Shell::{ShellExecuteExW, SHELLEXECUTEINFOW, SEE_MASK_NOCLOSEPROCESS};
+    use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
     use windows::Win32::UI::WindowsAndMessaging::SW_NORMAL;
 
     pub fn is_elevated() -> bool {
@@ -87,9 +89,13 @@ mod win_impl {
                     .to_string()
             };
 
-            let wide_exe: Vec<u16> = exe_to_run.encode_utf16().chain(std::iter::once(0)).collect();
+            let wide_exe: Vec<u16> = exe_to_run
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
             let wide_verb: Vec<u16> = "runas".encode_utf16().chain(std::iter::once(0)).collect();
-            let wide_params: Option<Vec<u16>> = args.map(|a| a.encode_utf16().chain(std::iter::once(0)).collect());
+            let wide_params: Option<Vec<u16>> =
+                args.map(|a| a.encode_utf16().chain(std::iter::once(0)).collect());
 
             let mut exec_info = SHELLEXECUTEINFOW {
                 cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
@@ -113,7 +119,8 @@ mod win_impl {
                 hProcess: Default::default(),
             };
 
-            ShellExecuteExW(&mut exec_info).map_err(|e| format!("ShellExecuteExW runas failed: {:?}", e))?;
+            ShellExecuteExW(&mut exec_info)
+                .map_err(|e| format!("ShellExecuteExW runas failed: {:?}", e))?;
             Ok(())
         }
     }
@@ -135,7 +142,10 @@ mod win_impl {
             }
 
             // Fallback: simulate Win+L or notify that SAS requires service privileges
-            Err("SendSAS in sas.dll is unavailable or requires Service SYSTEM privileges".to_string())
+            Err(
+                "SendSAS in sas.dll is unavailable or requires Service SYSTEM privileges"
+                    .to_string(),
+            )
         }
     }
 
@@ -173,8 +183,14 @@ mod win_impl {
             let scm = OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_ALL_ACCESS)
                 .map_err(|e| format!("OpenSCManagerW failed: {:?}", e))?;
 
-            let wide_name: Vec<u16> = SERVICE_NAME.encode_utf16().chain(std::iter::once(0)).collect();
-            let wide_display: Vec<u16> = SERVICE_DISPLAY_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+            let wide_name: Vec<u16> = SERVICE_NAME
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
+            let wide_display: Vec<u16> = SERVICE_DISPLAY_NAME
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
             let path_str = format!("\"{}\" --run-service", exe_path.to_string_lossy());
             let wide_path: Vec<u16> = path_str.encode_utf16().chain(std::iter::once(0)).collect();
 
@@ -208,7 +224,10 @@ mod win_impl {
             let scm = OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_ALL_ACCESS)
                 .map_err(|e| format!("OpenSCManagerW failed: {:?}", e))?;
 
-            let wide_name: Vec<u16> = SERVICE_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+            let wide_name: Vec<u16> = SERVICE_NAME
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
             let service = OpenServiceW(scm, PCWSTR(wide_name.as_ptr()), SERVICE_ALL_ACCESS);
 
             let res = if let Ok(s) = service {
@@ -231,7 +250,10 @@ mod win_impl {
             let scm = OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_ALL_ACCESS)
                 .map_err(|e| format!("OpenSCManagerW failed: {:?}", e))?;
 
-            let wide_name: Vec<u16> = SERVICE_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+            let wide_name: Vec<u16> = SERVICE_NAME
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
             let service = OpenServiceW(scm, PCWSTR(wide_name.as_ptr()), SERVICE_START);
 
             let res = if let Ok(s) = service {
@@ -252,7 +274,10 @@ mod win_impl {
             let scm = OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_ALL_ACCESS)
                 .map_err(|e| format!("OpenSCManagerW failed: {:?}", e))?;
 
-            let wide_name: Vec<u16> = SERVICE_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+            let wide_name: Vec<u16> = SERVICE_NAME
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
             let service = OpenServiceW(scm, PCWSTR(wide_name.as_ptr()), SERVICE_STOP);
 
             let res = if let Ok(s) = service {
@@ -282,7 +307,10 @@ mod win_impl {
                 };
             }
             let scm = scm.unwrap();
-            let wide_name: Vec<u16> = SERVICE_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+            let wide_name: Vec<u16> = SERVICE_NAME
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
             let service = OpenServiceW(scm, PCWSTR(wide_name.as_ptr()), SERVICE_QUERY_STATUS);
 
             let mut installed = false;
@@ -296,12 +324,8 @@ mod win_impl {
                     &mut status_process as *mut _ as *mut u8,
                     std::mem::size_of::<SERVICE_STATUS_PROCESS>(),
                 );
-                let q_res = QueryServiceStatusEx(
-                    s,
-                    SC_STATUS_PROCESS_INFO,
-                    Some(slice),
-                    &mut bytes_needed,
-                );
+                let q_res =
+                    QueryServiceStatusEx(s, SC_STATUS_PROCESS_INFO, Some(slice), &mut bytes_needed);
                 if q_res.is_ok() && status_process.dwCurrentState == SERVICE_RUNNING {
                     running = true;
                 }
@@ -379,8 +403,8 @@ pub fn get_service_status() -> ServiceStatusInfo {
 pub async fn send_pipe_command(cmd_json: &str) -> Result<String, String> {
     #[cfg(windows)]
     {
-        let req: PipeRequest = serde_json::from_str(cmd_json)
-            .map_err(|e| format!("Invalid JSON request: {}", e))?;
+        let req: PipeRequest =
+            serde_json::from_str(cmd_json).map_err(|e| format!("Invalid JSON request: {}", e))?;
         let resp = pipe_ipc::send_command(&req).await?;
         serde_json::to_string(&resp).map_err(|e| e.to_string())
     }
@@ -397,9 +421,12 @@ pub mod pipe_ipc {
     use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
 
     pub async fn send_command(req: &PipeRequest) -> Result<PipeResponse, String> {
-        let client = ClientOptions::new()
-            .open(SERVICE_PIPE_NAME)
-            .map_err(|e| format!("Failed to connect to service pipe {}: {}", SERVICE_PIPE_NAME, e))?;
+        let client = ClientOptions::new().open(SERVICE_PIPE_NAME).map_err(|e| {
+            format!(
+                "Failed to connect to service pipe {}: {}",
+                SERVICE_PIPE_NAME, e
+            )
+        })?;
 
         let mut client = client;
         let serialized = serde_json::to_string(req).map_err(|e| e.to_string())?;
@@ -407,7 +434,10 @@ pub mod pipe_ipc {
             .write_all(serialized.as_bytes())
             .await
             .map_err(|e| format!("Pipe write error: {}", e))?;
-        client.flush().await.map_err(|e| format!("Pipe flush error: {}", e))?;
+        client
+            .flush()
+            .await
+            .map_err(|e| format!("Pipe flush error: {}", e))?;
 
         // Read response
         let mut buffer = vec![0u8; 4096];
@@ -439,7 +469,10 @@ pub mod pipe_ipc {
                     .map_err(|e| format!("Failed to create pipe instance: {}", e))?
             };
 
-            server.connect().await.map_err(|e| format!("Pipe connect error: {}", e))?;
+            server
+                .connect()
+                .await
+                .map_err(|e| format!("Pipe connect error: {}", e))?;
 
             let mut server = server;
             let is_elevated_now = is_elevated();
@@ -466,7 +499,11 @@ pub mod pipe_ipc {
                                 "sas" => {
                                     let sas_res = trigger_sas();
                                     PipeResponse {
-                                        status: if sas_res.is_ok() { "ok".to_string() } else { "error".to_string() },
+                                        status: if sas_res.is_ok() {
+                                            "ok".to_string()
+                                        } else {
+                                            "error".to_string()
+                                        },
                                         elevated: is_elevated_now,
                                         is_service,
                                         message: sas_res.err(),
@@ -475,7 +512,11 @@ pub mod pipe_ipc {
                                 "switch_desktop" => {
                                     let sw_res = switch_to_input_desktop();
                                     PipeResponse {
-                                        status: if sw_res.is_ok() { "ok".to_string() } else { "error".to_string() },
+                                        status: if sw_res.is_ok() {
+                                            "ok".to_string()
+                                        } else {
+                                            "error".to_string()
+                                        },
                                         elevated: is_elevated_now,
                                         is_service,
                                         message: sw_res.err(),
@@ -484,16 +525,25 @@ pub mod pipe_ipc {
                                 "elevate_host" => {
                                     let res = request_elevation(req.args.as_deref(), None);
                                     PipeResponse {
-                                        status: if res.is_ok() { "ok".to_string() } else { "error".to_string() },
+                                        status: if res.is_ok() {
+                                            "ok".to_string()
+                                        } else {
+                                            "error".to_string()
+                                        },
                                         elevated: is_elevated_now,
                                         is_service,
                                         message: res.err(),
                                     }
                                 }
                                 "install_virtual_display" => {
-                                    let res = crate::virtual_display::install_driver(req.args.as_deref());
+                                    let res =
+                                        crate::virtual_display::install_driver(req.args.as_deref());
                                     PipeResponse {
-                                        status: if res.is_ok() { "ok".to_string() } else { "error".to_string() },
+                                        status: if res.is_ok() {
+                                            "ok".to_string()
+                                        } else {
+                                            "error".to_string()
+                                        },
                                         elevated: is_elevated_now,
                                         is_service,
                                         message: match res {
@@ -505,7 +555,11 @@ pub mod pipe_ipc {
                                 "uninstall_virtual_display" => {
                                     let res = crate::virtual_display::uninstall_driver();
                                     PipeResponse {
-                                        status: if res.is_ok() { "ok".to_string() } else { "error".to_string() },
+                                        status: if res.is_ok() {
+                                            "ok".to_string()
+                                        } else {
+                                            "error".to_string()
+                                        },
                                         elevated: is_elevated_now,
                                         is_service,
                                         message: match res {

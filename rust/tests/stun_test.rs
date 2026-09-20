@@ -52,8 +52,12 @@ fn test_parse_xor_mapped_address_ipv4() {
     let xor_ip_u32 = target_ip_u32 ^ MAGIC_COOKIE;
     response.extend_from_slice(&xor_ip_u32.to_be_bytes());
 
-    let parsed = StunClient::parse_binding_response(&response, &tx_id).expect("Should parse valid XOR address");
-    assert_eq!(parsed, SocketAddr::new(IpAddr::V4(Ipv4Addr::new(203, 0, 113, 195)), 54320));
+    let parsed = StunClient::parse_binding_response(&response, &tx_id)
+        .expect("Should parse valid XOR address");
+    assert_eq!(
+        parsed,
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(203, 0, 113, 195)), 54320)
+    );
 }
 
 #[test]
@@ -79,8 +83,12 @@ fn test_parse_mapped_address_fallback_ipv4() {
     response.extend_from_slice(&12345u16.to_be_bytes());
     response.extend_from_slice(&[198, 51, 100, 1]);
 
-    let parsed = StunClient::parse_binding_response(&response, &tx_id).expect("Should parse valid MAPPED address");
-    assert_eq!(parsed, SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 1)), 12345));
+    let parsed = StunClient::parse_binding_response(&response, &tx_id)
+        .expect("Should parse valid MAPPED address");
+    assert_eq!(
+        parsed,
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 1)), 12345)
+    );
 }
 
 #[test]
@@ -116,7 +124,10 @@ async fn test_live_stun_query() {
         }
         Err(e) => {
             // If offline or network blocks UDP 19302, log warning
-            eprintln!("Warning: Live STUN query failed (possibly offline or blocked UDP): {}", e);
+            eprintln!(
+                "Warning: Live STUN query failed (possibly offline or blocked UDP): {}",
+                e
+            );
         }
     }
 }

@@ -127,29 +127,13 @@ pub async fn handle_connection(
             name,
             stun_endpoint,
         } => {
-            handle_host_registration(
-                device_id,
-                name,
-                stun_endpoint,
-                ws_stream,
-                host_map,
-                addr,
-            )
-            .await
+            handle_host_registration(device_id, name, stun_endpoint, ws_stream, host_map, addr)
+                .await
         }
         SignalMessage::ConnectRequest {
             target_id,
             client_name: _,
-        } => {
-            handle_client_connect(
-                target_id,
-                text.to_string(),
-                ws_stream,
-                host_map,
-                addr,
-            )
-            .await
-        }
+        } => handle_client_connect(target_id, text.to_string(), ws_stream, host_map, addr).await,
         _ => Ok(()),
     }
 }
@@ -217,7 +201,10 @@ async fn handle_host_registration(
     };
 
     if let Some(rendezvous) = rendezvous_opt {
-        println!("[Signal] Bridging Client and Host for Device ID={}", clean_id);
+        println!(
+            "[Signal] Bridging Client and Host for Device ID={}",
+            clean_id
+        );
         // Remove from active registry while bridged
         {
             let mut map = host_map.write().await;
@@ -234,7 +221,10 @@ async fn handle_host_registration(
             .await
             .is_err()
         {
-            eprintln!("[Signal] Failed to send client_connected notice to host {}", clean_id);
+            eprintln!(
+                "[Signal] Failed to send client_connected notice to host {}",
+                clean_id
+            );
             return Ok(());
         }
 
@@ -296,7 +286,10 @@ async fn handle_client_connect(
                 connect_req_json: raw_req_text,
             };
             if tx.send(rendezvous).is_err() {
-                eprintln!("[Signal] Failed to hand off client stream to host {}", clean_id);
+                eprintln!(
+                    "[Signal] Failed to hand off client stream to host {}",
+                    clean_id
+                );
             }
         }
         None => {

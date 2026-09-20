@@ -187,10 +187,7 @@ impl StunClient {
         }
     }
 
-    fn parse_xor_mapped_address(
-        val: &[u8],
-        tx_id: &[u8; 12],
-    ) -> Result<SocketAddr, StunError> {
+    fn parse_xor_mapped_address(val: &[u8], tx_id: &[u8; 12]) -> Result<SocketAddr, StunError> {
         if val.len() < 4 {
             return Err(StunError::InvalidResponse(
                 "XOR-MAPPED-ADDRESS attribute too short".into(),

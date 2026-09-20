@@ -25,7 +25,8 @@ mod test {
                 nv12[y * w + x] = y_val;
 
                 if y % 2 == 0 && x % 2 == 0 {
-                    let u_val = (-0.169 * r - 0.331 * g + 0.500 * b + 128.0).clamp(0.0, 255.0) as u8;
+                    let u_val =
+                        (-0.169 * r - 0.331 * g + 0.500 * b + 128.0).clamp(0.0, 255.0) as u8;
                     let v_val = (0.500 * r - 0.419 * g - 0.081 * b + 128.0).clamp(0.0, 255.0) as u8;
                     let uv_idx = y_plane_size + (y / 2) * w + x;
                     nv12[uv_idx] = u_val;

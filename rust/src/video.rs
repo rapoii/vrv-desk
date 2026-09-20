@@ -1,6 +1,4 @@
-use openh264::encoder::{
-    BitRate, Encoder, EncoderConfig, FrameRate, RateControlMode, UsageType,
-};
+use openh264::encoder::{BitRate, Encoder, EncoderConfig, FrameRate, RateControlMode, UsageType};
 use openh264::formats::{RgbSliceU8, YUVBuffer};
 use openh264::OpenH264API;
 
@@ -21,12 +19,7 @@ pub struct H264VideoEncoder {
 
 impl H264VideoEncoder {
     /// Create a new H264 Screen Content RealTime encoder
-    pub fn new(
-        width: u32,
-        height: u32,
-        bitrate: u32,
-        framerate: f32,
-    ) -> Result<Self, String> {
+    pub fn new(width: u32, height: u32, bitrate: u32, framerate: f32) -> Result<Self, String> {
         let config = EncoderConfig::new()
             .bitrate(BitRate::from_bps(bitrate))
             .max_frame_rate(FrameRate::from_hz(framerate))
@@ -206,3 +199,59 @@ impl VideoEncoder {
     }
 }
 
+/// Fast downsampling for 32-bit BGRA frames
+pub fn scale_bgra(src: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_h: u32, dst: &mut Vec<u8>) {
+    if src_w == dst_w && src_h == dst_h {
+        dst.clear();
+        dst.extend_from_slice(src);
+        return;
+    }
+
+    if src_w == 0 || src_h == 0 || dst_w == 0 || dst_h == 0 {
+        dst.clear();
+        return;
+    }
+
+    let dst_len = (dst_w * dst_h * 4) as usize;
+    dst.resize(dst_len, 0);
+
+    let x_ratio = ((src_w << 16) / dst_w) + 1;
+    let y_ratio = ((src_h << 16) / dst_h) + 1;
+
+    for y in 0..dst_h {
+        let src_y = ((y * y_ratio) >> 16).min(src_h - 1);
+        let src_row = (src_y * src_w * 4) as usize;
+        let dst_row = (y * dst_w * 4) as usize;
+
+        for x in 0..dst_w {
+            let src_x = ((x * x_ratio) >> 16).min(src_w - 1);
+            let src_px = src_row + (src_x * 4) as usize;
+            let dst_px = dst_row + (x * 4) as usize;
+
+            if src_px + 4 <= src.len() && dst_px + 4 <= dst.len() {
+                dst[dst_px..dst_px + 4].copy_from_slice(&src[src_px..src_px + 4]);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scale_bgra_dimensions() {
+        let src_w = 1920;
+        let src_h = 1080;
+        let src = vec![128u8; (src_w * src_h * 4) as usize];
+        let mut dst = Vec::new();
+
+        scale_bgra(&src, src_w, src_h, 1280, 720, &mut dst);
+        assert_eq!(dst.len(), 1280 * 720 * 4);
+        assert_eq!(dst[0], 128);
+
+        // Same dimensions should do exact copy
+        scale_bgra(&src, src_w, src_h, src_w, src_h, &mut dst);
+        assert_eq!(dst.len(), (src_w * src_h * 4) as usize);
+    }
+}

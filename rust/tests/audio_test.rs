@@ -23,10 +23,7 @@ fn test_encode_decode_audio_packet() {
     assert_eq!(&packet[0..4], b"VAUD");
     assert_eq!(packet[4], format);
     assert_eq!(packet[5], channels);
-    assert_eq!(
-        u16::from_le_bytes([packet[6], packet[7]]),
-        sample_rate
-    );
+    assert_eq!(u16::from_le_bytes([packet[6], packet[7]]), sample_rate);
     assert_eq!(&packet[8..], &dummy_pcm[..]);
 
     let decoded = decode_audio_packet(&packet).expect("Should decode successfully");

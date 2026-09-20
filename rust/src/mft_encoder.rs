@@ -48,7 +48,12 @@ pub fn bgra_to_nv12(width: u32, height: u32, bgra: &[u8], nv12: &mut [u8]) {
 }
 
 impl MftH264Encoder {
-    pub fn new(width: u32, height: u32, bitrate: u32, fps: f32) -> std::result::Result<Self, String> {
+    pub fn new(
+        width: u32,
+        height: u32,
+        bitrate: u32,
+        fps: f32,
+    ) -> std::result::Result<Self, String> {
         #[cfg(windows)]
         unsafe {
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
@@ -198,11 +203,7 @@ impl MftH264Encoder {
                 .Lock(&mut ptr, Some(&mut max_len), Some(&mut cur_len))
                 .map_err(|e| format!("Lock input buffer failed: {:?}", e))?;
 
-            std::ptr::copy_nonoverlapping(
-                self.nv12_buffer.as_ptr(),
-                ptr,
-                self.nv12_buffer.len(),
-            );
+            std::ptr::copy_nonoverlapping(self.nv12_buffer.as_ptr(), ptr, self.nv12_buffer.len());
             let _ = input_media_buffer.Unlock();
             let _ = input_media_buffer.SetCurrentLength(nv12_len);
 
@@ -227,8 +228,8 @@ impl MftH264Encoder {
             let output_sample_buf = MFCreateMemoryBuffer(out_max_size)
                 .map_err(|e| format!("MFCreateMemoryBuffer output failed: {:?}", e))?;
 
-            let output_sample: IMFSample = MFCreateSample()
-                .map_err(|e| format!("MFCreateSample output failed: {:?}", e))?;
+            let output_sample: IMFSample =
+                MFCreateSample().map_err(|e| format!("MFCreateSample output failed: {:?}", e))?;
             let _ = output_sample.AddBuffer(&output_sample_buf);
 
             let mut out_buffer_struct = MFT_OUTPUT_DATA_BUFFER {
@@ -239,8 +240,7 @@ impl MftH264Encoder {
             };
 
             let mut status: u32 = 0;
-            let hr_out =
-                transform.ProcessOutput(0, &mut [out_buffer_struct], &mut status);
+            let hr_out = transform.ProcessOutput(0, &mut [out_buffer_struct], &mut status);
 
             if let Ok(()) = hr_out {
                 let mut out_ptr: *mut u8 = std::ptr::null_mut();
@@ -250,8 +250,7 @@ impl MftH264Encoder {
                     .Lock(&mut out_ptr, Some(&mut out_max), Some(&mut out_len))
                     .is_ok()
                 {
-                    let raw_nal =
-                        std::slice::from_raw_parts(out_ptr, out_len as usize).to_vec();
+                    let raw_nal = std::slice::from_raw_parts(out_ptr, out_len as usize).to_vec();
                     let _ = output_sample_buf.Unlock();
 
                     let is_idr = raw_nal.windows(4).any(|w| {

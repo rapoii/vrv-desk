@@ -246,7 +246,10 @@ impl AudioLoopbackCapturer {
             match OpusAudioEncoder::new(sample_rate as u32, channels, 64_000) {
                 Ok(enc) => Some(enc),
                 Err(e) => {
-                    eprintln!("Failed to init Opus encoder for mock capturer (falling back to PCM): {}", e);
+                    eprintln!(
+                        "Failed to init Opus encoder for mock capturer (falling back to PCM): {}",
+                        e
+                    );
                     None
                 }
             }
@@ -324,19 +327,17 @@ impl AudioLoopbackCapturer {
 
         let join_handle = std::thread::Builder::new()
             .name("audio_loopback_wasapi".to_string())
-            .spawn(move || {
-                unsafe {
-                    let coinit_res = CoInitializeEx(None, COINIT_MULTITHREADED);
-                    let should_uninit = coinit_res.is_ok();
+            .spawn(move || unsafe {
+                let coinit_res = CoInitializeEx(None, COINIT_MULTITHREADED);
+                let should_uninit = coinit_res.is_ok();
 
-                    let res = run_wasapi_capture_loop(sender, is_running_clone, &init_tx, use_opus);
-                    if let Err(e) = res {
-                        let _ = init_tx.send(Err(e));
-                    }
+                let res = run_wasapi_capture_loop(sender, is_running_clone, &init_tx, use_opus);
+                if let Err(e) = res {
+                    let _ = init_tx.send(Err(e));
+                }
 
-                    if should_uninit {
-                        CoUninitialize();
-                    }
+                if should_uninit {
+                    CoUninitialize();
                 }
             })
             .map_err(|e| format!("Failed to spawn audio capture thread: {}", e))?;
@@ -466,7 +467,10 @@ unsafe fn run_wasapi_capture_loop(
         match OpusAudioEncoder::new(sample_rate as u32, channels, 64_000) {
             Ok(enc) => Some(enc),
             Err(e) => {
-                eprintln!("Failed to init Opus encoder for WASAPI capture (falling back to PCM): {}", e);
+                eprintln!(
+                    "Failed to init Opus encoder for WASAPI capture (falling back to PCM): {}",
+                    e
+                );
                 None
             }
         }
@@ -501,13 +505,8 @@ unsafe fn run_wasapi_capture_loop(
             let mut num_frames: u32 = 0;
             let mut flags: u32 = 0;
 
-            let get_res = capture_client.GetBuffer(
-                &mut data_ptr,
-                &mut num_frames,
-                &mut flags,
-                None,
-                None,
-            );
+            let get_res =
+                capture_client.GetBuffer(&mut data_ptr, &mut num_frames, &mut flags, None, None);
 
             if get_res.is_err() {
                 break;
@@ -531,8 +530,7 @@ unsafe fn run_wasapi_capture_loop(
                         pcm_out_buffer.extend_from_slice(&sample.to_le_bytes());
                     }
                 } else if is_pcm16 {
-                    let raw_bytes =
-                        std::slice::from_raw_parts(data_ptr, pcm_byte_len);
+                    let raw_bytes = std::slice::from_raw_parts(data_ptr, pcm_byte_len);
                     pcm_out_buffer.extend_from_slice(raw_bytes);
                 }
 

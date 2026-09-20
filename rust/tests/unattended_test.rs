@@ -117,7 +117,9 @@ async fn test_auth_with_unattended_static_password() {
     if let Message::Text(text) = second_msg {
         let auth_ok: AuthMessage = serde_json::from_str(&text).unwrap();
         match auth_ok {
-            AuthMessage::AuthOk { e2ee, unattended, .. } => {
+            AuthMessage::AuthOk {
+                e2ee, unattended, ..
+            } => {
                 assert!(e2ee);
                 assert!(unattended);
             }
@@ -203,7 +205,9 @@ async fn test_auth_unattended_rejects_wrong_password() {
     if let Message::Text(text) = second_msg {
         let auth_fail: AuthMessage = serde_json::from_str(&text).unwrap();
         match auth_fail {
-            AuthMessage::AuthFailed { remaining_attempts, .. } => {
+            AuthMessage::AuthFailed {
+                remaining_attempts, ..
+            } => {
                 assert_eq!(remaining_attempts, 2);
             }
             _ => panic!("Expected AuthFailed"),

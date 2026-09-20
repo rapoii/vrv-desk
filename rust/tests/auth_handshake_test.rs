@@ -266,9 +266,9 @@ async fn test_auth_handshake_three_failed_attempts_disconnects() {
     // Socket should now be closed / EOF / Err
     let next_msg = tokio::time::timeout(Duration::from_secs(3), read.next()).await;
     match next_msg {
-        Ok(None) => {} // socket cleanly closed
+        Ok(None) => {}                        // socket cleanly closed
         Ok(Some(Ok(Message::Close(_)))) => {} // received close frame
-        Ok(Some(Err(_))) => {} // socket error on close
+        Ok(Some(Err(_))) => {}                // socket error on close
         other => panic!("Expected socket close, got {:?}", other),
     }
 }

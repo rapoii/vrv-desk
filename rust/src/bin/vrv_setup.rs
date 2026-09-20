@@ -66,7 +66,14 @@ const COLOR_ACCENT: u32 = 0x00D27000; // Cyan/Blue
 
 unsafe fn make_font(height: i32, weight: i32, face: PCWSTR) -> HFONT {
     CreateFontW(
-        height, 0, 0, 0, weight, 0, 0, 0,
+        height,
+        0,
+        0,
+        0,
+        weight,
+        0,
+        0,
+        0,
         DEFAULT_CHARSET.0 as u32,
         OUT_DEFAULT_PRECIS.0 as u32,
         CLIP_DEFAULT_PRECIS.0 as u32,
@@ -78,7 +85,9 @@ unsafe fn make_font(height: i32, weight: i32, face: PCWSTR) -> HFONT {
 
 fn get_default_install_dir() -> PathBuf {
     if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-        PathBuf::from(local_app_data).join("Programs").join("VrV Desk")
+        PathBuf::from(local_app_data)
+            .join("Programs")
+            .join("VrV Desk")
     } else {
         PathBuf::from(r"C:\Program Files\VrV Desk")
     }
@@ -137,7 +146,9 @@ fn perform_install(
             *s = "Creating destination directory...".to_string();
         }
         progress.store(15, Ordering::Relaxed);
-        unsafe { InvalidateRect(hwnd, None, FALSE); }
+        unsafe {
+            InvalidateRect(hwnd, None, FALSE);
+        }
         std::thread::sleep(std::time::Duration::from_millis(300));
 
         if let Err(e) = fs::create_dir_all(&dest_dir) {
@@ -152,7 +163,9 @@ fn perform_install(
             *s = "Extracting vrv_desk.exe...".to_string();
         }
         progress.store(40, Ordering::Relaxed);
-        unsafe { InvalidateRect(hwnd, None, FALSE); }
+        unsafe {
+            InvalidateRect(hwnd, None, FALSE);
+        }
         std::thread::sleep(std::time::Duration::from_millis(400));
 
         let target_exe = dest_dir.join("vrv_desk.exe");
@@ -169,13 +182,19 @@ fn perform_install(
                 *s = "Creating desktop shortcut...".to_string();
             }
             progress.store(65, Ordering::Relaxed);
-            unsafe { InvalidateRect(hwnd, None, FALSE); }
+            unsafe {
+                InvalidateRect(hwnd, None, FALSE);
+            }
             std::thread::sleep(std::time::Duration::from_millis(300));
 
             if let Ok(user_profile) = std::env::var("USERPROFILE") {
                 let desktop_dir = PathBuf::from(user_profile).join("Desktop");
                 let lnk_path = desktop_dir.join("VrV Desk.lnk");
-                create_shortcut(&target_exe, &lnk_path, "VrV Desk - Screen Mirror & Remote Control");
+                create_shortcut(
+                    &target_exe,
+                    &lnk_path,
+                    "VrV Desk - Screen Mirror & Remote Control",
+                );
             }
         }
 
@@ -186,7 +205,9 @@ fn perform_install(
                 *s = "Creating Start Menu shortcut...".to_string();
             }
             progress.store(80, Ordering::Relaxed);
-            unsafe { InvalidateRect(hwnd, None, FALSE); }
+            unsafe {
+                InvalidateRect(hwnd, None, FALSE);
+            }
             std::thread::sleep(std::time::Duration::from_millis(300));
 
             if let Ok(app_data) = std::env::var("APPDATA") {
@@ -208,13 +229,27 @@ fn perform_install(
             *s = "Bundling Virtual Display Driver (Headless PC Support)...".to_string();
         }
         progress.store(88, Ordering::Relaxed);
-        unsafe { InvalidateRect(hwnd, None, FALSE); }
+        unsafe {
+            InvalidateRect(hwnd, None, FALSE);
+        }
         let driver_dir = dest_dir.join("driver").join("virtual_display");
         let _ = fs::create_dir_all(&driver_dir);
-        let _ = fs::write(driver_dir.join("IddSampleDriver.inf"), include_str!("../../../driver/virtual_display/IddSampleDriver.inf"));
-        let _ = fs::write(driver_dir.join("install.bat"), include_str!("../../../driver/virtual_display/install.bat"));
-        let _ = fs::write(driver_dir.join("uninstall.bat"), include_str!("../../../driver/virtual_display/uninstall.bat"));
-        let _ = fs::write(driver_dir.join("README.md"), include_str!("../../../driver/virtual_display/README.md"));
+        let _ = fs::write(
+            driver_dir.join("IddSampleDriver.inf"),
+            include_str!("../../../driver/virtual_display/IddSampleDriver.inf"),
+        );
+        let _ = fs::write(
+            driver_dir.join("install.bat"),
+            include_str!("../../../driver/virtual_display/install.bat"),
+        );
+        let _ = fs::write(
+            driver_dir.join("uninstall.bat"),
+            include_str!("../../../driver/virtual_display/uninstall.bat"),
+        );
+        let _ = fs::write(
+            driver_dir.join("README.md"),
+            include_str!("../../../driver/virtual_display/README.md"),
+        );
 
         // Step 5: Register Uninstaller in Windows Registry
         {
@@ -222,7 +257,9 @@ fn perform_install(
             *s = "Registering application in Windows...".to_string();
         }
         progress.store(95, Ordering::Relaxed);
-        unsafe { InvalidateRect(hwnd, None, FALSE); }
+        unsafe {
+            InvalidateRect(hwnd, None, FALSE);
+        }
         register_uninstaller(&dest_dir, &target_exe);
         std::thread::sleep(std::time::Duration::from_millis(400));
 
@@ -297,14 +334,25 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             let hinst = GetModuleHandleW(None).unwrap();
 
             // Destination Edit Box & Browse Button
-            let dest_wstr: Vec<u16> = state.dest_path.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
+            let dest_wstr: Vec<u16> = state
+                .dest_path
+                .to_string_lossy()
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
             state.hwnd_dest_edit = CreateWindowExW(
                 WINDOW_EX_STYLE(0),
                 w!("EDIT"),
                 PCWSTR(dest_wstr.as_ptr()),
                 WS_CHILD | WS_BORDER | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
-                185, 120, 235, 24,
-                hwnd, HMENU(ID_EDIT_DEST as _), hinst, None,
+                185,
+                120,
+                235,
+                24,
+                hwnd,
+                HMENU(ID_EDIT_DEST as _),
+                hinst,
+                None,
             );
 
             state.hwnd_btn_browse = CreateWindowExW(
@@ -312,8 +360,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 w!("BUTTON"),
                 w!("Browse..."),
                 WS_CHILD | WINDOW_STYLE(BS_PUSHBUTTON as u32),
-                426, 120, 74, 24,
-                hwnd, HMENU(ID_BTN_BROWSE as _), hinst, None,
+                426,
+                120,
+                74,
+                24,
+                hwnd,
+                HMENU(ID_BTN_BROWSE as _),
+                hinst,
+                None,
             );
 
             // Tasks Checkboxes
@@ -322,8 +376,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 w!("BUTTON"),
                 w!("Create a desktop shortcut"),
                 WS_CHILD | WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
-                185, 120, 300, 24,
-                hwnd, HMENU(ID_CHK_DESKTOP as _), hinst, None,
+                185,
+                120,
+                300,
+                24,
+                hwnd,
+                HMENU(ID_CHK_DESKTOP as _),
+                hinst,
+                None,
             );
             SendMessageW(state.hwnd_chk_desktop, BM_SETCHECK, WPARAM(1), LPARAM(0));
 
@@ -332,8 +392,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 w!("BUTTON"),
                 w!("Create a Start Menu shortcut"),
                 WS_CHILD | WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
-                185, 150, 300, 24,
-                hwnd, HMENU(ID_CHK_STARTMENU as _), hinst, None,
+                185,
+                150,
+                300,
+                24,
+                hwnd,
+                HMENU(ID_CHK_STARTMENU as _),
+                hinst,
+                None,
             );
             SendMessageW(state.hwnd_chk_startmenu, BM_SETCHECK, WPARAM(1), LPARAM(0));
 
@@ -343,8 +409,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 w!("BUTTON"),
                 w!("Launch VrV Desk now"),
                 WS_CHILD | WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
-                185, 200, 300, 24,
-                hwnd, HMENU(ID_CHK_LAUNCH as _), hinst, None,
+                185,
+                200,
+                300,
+                24,
+                hwnd,
+                HMENU(ID_CHK_LAUNCH as _),
+                hinst,
+                None,
             );
             SendMessageW(state.hwnd_chk_launch, BM_SETCHECK, WPARAM(1), LPARAM(0));
 
@@ -354,8 +426,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 w!("BUTTON"),
                 w!("< Back"),
                 WS_CHILD | WS_VISIBLE | WINDOW_STYLE(BS_PUSHBUTTON as u32),
-                260, 320, 75, 26,
-                hwnd, HMENU(ID_BTN_BACK as _), hinst, None,
+                260,
+                320,
+                75,
+                26,
+                hwnd,
+                HMENU(ID_BTN_BACK as _),
+                hinst,
+                None,
             );
 
             state.hwnd_btn_next = CreateWindowExW(
@@ -363,8 +441,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 w!("BUTTON"),
                 w!("Next >"),
                 WS_CHILD | WS_VISIBLE | WINDOW_STYLE(BS_DEFPUSHBUTTON as u32),
-                345, 320, 75, 26,
-                hwnd, HMENU(ID_BTN_NEXT as _), hinst, None,
+                345,
+                320,
+                75,
+                26,
+                hwnd,
+                HMENU(ID_BTN_NEXT as _),
+                hinst,
+                None,
             );
 
             state.hwnd_btn_cancel = CreateWindowExW(
@@ -372,8 +456,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 w!("BUTTON"),
                 w!("Cancel"),
                 WS_CHILD | WS_VISIBLE | WINDOW_STYLE(BS_PUSHBUTTON as u32),
-                430, 320, 75, 26,
-                hwnd, HMENU(ID_BTN_CANCEL as _), hinst, None,
+                430,
+                320,
+                75,
+                26,
+                hwnd,
+                HMENU(ID_BTN_CANCEL as _),
+                hinst,
+                None,
             );
 
             update_page_controls(state);
@@ -394,59 +484,75 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                         update_page_controls(state);
                         InvalidateRect(hwnd, None, TRUE);
                     }
-                    ID_BTN_NEXT => {
-                        match state.page {
-                            WizardPage::Welcome => {
-                                state.page = WizardPage::Destination;
-                                update_page_controls(state);
-                                InvalidateRect(hwnd, None, TRUE);
-                            }
-                            WizardPage::Destination => {
-                                let mut buf = [0u16; 512];
-                                let len = GetWindowTextW(state.hwnd_dest_edit, &mut buf);
-                                if len > 0 {
-                                    let raw = String::from_utf16_lossy(&buf[..len as usize]);
-                                    let trimmed = raw.trim();
-                                    if !trimmed.is_empty() {
-                                        state.dest_path = PathBuf::from(trimmed);
-                                    }
-                                }
-                                state.page = WizardPage::Tasks;
-                                update_page_controls(state);
-                                InvalidateRect(hwnd, None, TRUE);
-                            }
-                            WizardPage::Tasks => {
-                                state.create_desktop_icon = SendMessageW(state.hwnd_chk_desktop, BM_GETCHECK, WPARAM(0), LPARAM(0)).0 == 1;
-                                state.create_start_menu = SendMessageW(state.hwnd_chk_startmenu, BM_GETCHECK, WPARAM(0), LPARAM(0)).0 == 1;
-                                state.page = WizardPage::Ready;
-                                update_page_controls(state);
-                                InvalidateRect(hwnd, None, TRUE);
-                            }
-                            WizardPage::Ready => {
-                                state.page = WizardPage::Installing;
-                                update_page_controls(state);
-                                InvalidateRect(hwnd, None, TRUE);
-
-                                perform_install(
-                                    state.dest_path.clone(),
-                                    state.create_desktop_icon,
-                                    state.create_start_menu,
-                                    state.install_progress.clone(),
-                                    state.install_status.clone(),
-                                    hwnd,
-                                );
-                            }
-                            WizardPage::Finished => {
-                                let launch = SendMessageW(state.hwnd_chk_launch, BM_GETCHECK, WPARAM(0), LPARAM(0)).0 == 1;
-                                if launch {
-                                    let exe_path = state.dest_path.join("vrv_desk.exe");
-                                    let _ = Command::new(exe_path).spawn();
-                                }
-                                PostQuitMessage(0);
-                            }
-                            _ => {}
+                    ID_BTN_NEXT => match state.page {
+                        WizardPage::Welcome => {
+                            state.page = WizardPage::Destination;
+                            update_page_controls(state);
+                            InvalidateRect(hwnd, None, TRUE);
                         }
-                    }
+                        WizardPage::Destination => {
+                            let mut buf = [0u16; 512];
+                            let len = GetWindowTextW(state.hwnd_dest_edit, &mut buf);
+                            if len > 0 {
+                                let raw = String::from_utf16_lossy(&buf[..len as usize]);
+                                let trimmed = raw.trim();
+                                if !trimmed.is_empty() {
+                                    state.dest_path = PathBuf::from(trimmed);
+                                }
+                            }
+                            state.page = WizardPage::Tasks;
+                            update_page_controls(state);
+                            InvalidateRect(hwnd, None, TRUE);
+                        }
+                        WizardPage::Tasks => {
+                            state.create_desktop_icon = SendMessageW(
+                                state.hwnd_chk_desktop,
+                                BM_GETCHECK,
+                                WPARAM(0),
+                                LPARAM(0),
+                            )
+                            .0 == 1;
+                            state.create_start_menu = SendMessageW(
+                                state.hwnd_chk_startmenu,
+                                BM_GETCHECK,
+                                WPARAM(0),
+                                LPARAM(0),
+                            )
+                            .0 == 1;
+                            state.page = WizardPage::Ready;
+                            update_page_controls(state);
+                            InvalidateRect(hwnd, None, TRUE);
+                        }
+                        WizardPage::Ready => {
+                            state.page = WizardPage::Installing;
+                            update_page_controls(state);
+                            InvalidateRect(hwnd, None, TRUE);
+
+                            perform_install(
+                                state.dest_path.clone(),
+                                state.create_desktop_icon,
+                                state.create_start_menu,
+                                state.install_progress.clone(),
+                                state.install_status.clone(),
+                                hwnd,
+                            );
+                        }
+                        WizardPage::Finished => {
+                            let launch = SendMessageW(
+                                state.hwnd_chk_launch,
+                                BM_GETCHECK,
+                                WPARAM(0),
+                                LPARAM(0),
+                            )
+                            .0 == 1;
+                            if launch {
+                                let exe_path = state.dest_path.join("vrv_desk.exe");
+                                let _ = Command::new(exe_path).spawn();
+                            }
+                            PostQuitMessage(0);
+                        }
+                        _ => {}
+                    },
                     ID_BTN_CANCEL => {
                         let res = MessageBoxW(
                             hwnd,
@@ -476,13 +582,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                             .args(["-NoProfile", "-Command", &ps_cmd])
                             .output()
                         {
-                            let selected = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                            let selected =
+                                String::from_utf8_lossy(&output.stdout).trim().to_string();
                             if !selected.is_empty() {
                                 let mut target_folder = PathBuf::from(selected);
                                 if !target_folder.ends_with("VrV Desk") {
                                     target_folder = target_folder.join("VrV Desk");
                                 }
-                                let wstr: Vec<u16> = target_folder.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
+                                let wstr: Vec<u16> = target_folder
+                                    .to_string_lossy()
+                                    .encode_utf16()
+                                    .chain(std::iter::once(0))
+                                    .collect();
                                 let _ = SetWindowTextW(state.hwnd_dest_edit, PCWSTR(wstr.as_ptr()));
                                 state.dest_path = target_folder;
                             }
@@ -507,7 +618,12 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 let _ = DeleteObject(brush_bg);
 
                 // Left Sidebar (Welcome & Finished full height, or standard pages)
-                let sidebar_rect = RECT { left: 0, top: 0, right: 165, bottom: 310 };
+                let sidebar_rect = RECT {
+                    left: 0,
+                    top: 0,
+                    right: 165,
+                    bottom: 310,
+                };
                 let brush_sidebar = CreateSolidBrush(COLORREF(COLOR_SIDEBAR_BG));
                 FillRect(hdc, &sidebar_rect, brush_sidebar);
                 let _ = DeleteObject(brush_sidebar);
@@ -517,16 +633,38 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 let old_font = SelectObject(hdc, font_side);
                 SetBkMode(hdc, TRANSPARENT);
                 SetTextColor(hdc, COLORREF(COLOR_WHITE));
-                let mut side_title_rect = RECT { left: 15, top: 30, right: 150, bottom: 60 };
+                let mut side_title_rect = RECT {
+                    left: 15,
+                    top: 30,
+                    right: 150,
+                    bottom: 60,
+                };
                 let mut side_title: Vec<u16> = "VrV Desk".encode_utf16().collect();
-                DrawTextW(hdc, &mut side_title, &mut side_title_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                DrawTextW(
+                    hdc,
+                    &mut side_title,
+                    &mut side_title_rect,
+                    DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+                );
 
                 let font_side_sub = make_font(12, FW_NORMAL.0 as i32, w!("Segoe UI"));
                 SelectObject(hdc, font_side_sub);
                 SetTextColor(hdc, COLORREF(0x00D0D0D0));
-                let mut side_sub_rect = RECT { left: 15, top: 60, right: 150, bottom: 120 };
-                let mut side_sub: Vec<u16> = "Ultra-low latency\nRemote Desktop\n& Mirroring".encode_utf16().collect();
-                DrawTextW(hdc, &mut side_sub, &mut side_sub_rect, DT_LEFT | DT_WORDBREAK);
+                let mut side_sub_rect = RECT {
+                    left: 15,
+                    top: 60,
+                    right: 150,
+                    bottom: 120,
+                };
+                let mut side_sub: Vec<u16> = "Ultra-low latency\nRemote Desktop\n& Mirroring"
+                    .encode_utf16()
+                    .collect();
+                DrawTextW(
+                    hdc,
+                    &mut side_sub,
+                    &mut side_sub_rect,
+                    DT_LEFT | DT_WORDBREAK,
+                );
 
                 // Separator Line above bottom buttons
                 let pen_sep = CreatePen(PS_SOLID, 1, COLORREF(0x00D0D0D0));
@@ -542,14 +680,26 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                         let font_h1 = make_font(16, FW_BOLD.0 as i32, w!("Segoe UI"));
                         SelectObject(hdc, font_h1);
                         SetTextColor(hdc, COLORREF(COLOR_TEXT_MAIN));
-                        let mut h1_rect = RECT { left: 185, top: 25, right: 500, bottom: 70 };
-                        let mut h1: Vec<u16> = "Welcome to the VrV Desk\nSetup Wizard".encode_utf16().collect();
+                        let mut h1_rect = RECT {
+                            left: 185,
+                            top: 25,
+                            right: 500,
+                            bottom: 70,
+                        };
+                        let mut h1: Vec<u16> = "Welcome to the VrV Desk\nSetup Wizard"
+                            .encode_utf16()
+                            .collect();
                         DrawTextW(hdc, &mut h1, &mut h1_rect, DT_LEFT | DT_WORDBREAK);
 
                         let font_body = make_font(13, FW_NORMAL.0 as i32, w!("Segoe UI"));
                         SelectObject(hdc, font_body);
                         SetTextColor(hdc, COLORREF(COLOR_TEXT_MUTED));
-                        let mut body_rect = RECT { left: 185, top: 80, right: 500, bottom: 280 };
+                        let mut body_rect = RECT {
+                            left: 185,
+                            top: 80,
+                            right: 500,
+                            bottom: 280,
+                        };
                         let mut body: Vec<u16> = "This wizard will install VrV Desk v0.14.0 on your computer.\n\nFeaturing DXGI GPU capture, MFT Hardware H.264, WASAPI loopback audio, and zero-config LAN discovery.\n\nClick Next to continue, or Cancel to exit Setup.".encode_utf16().collect();
                         DrawTextW(hdc, &mut body, &mut body_rect, DT_LEFT | DT_WORDBREAK);
                     }
@@ -558,34 +708,78 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                         let font_h1 = make_font(14, FW_BOLD.0 as i32, w!("Segoe UI"));
                         SelectObject(hdc, font_h1);
                         SetTextColor(hdc, COLORREF(COLOR_TEXT_MAIN));
-                        let mut h1_rect = RECT { left: 185, top: 20, right: 500, bottom: 40 };
-                        let mut h1: Vec<u16> = "Select Destination Location".encode_utf16().collect();
-                        DrawTextW(hdc, &mut h1, &mut h1_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                        let mut h1_rect = RECT {
+                            left: 185,
+                            top: 20,
+                            right: 500,
+                            bottom: 40,
+                        };
+                        let mut h1: Vec<u16> =
+                            "Select Destination Location".encode_utf16().collect();
+                        DrawTextW(
+                            hdc,
+                            &mut h1,
+                            &mut h1_rect,
+                            DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+                        );
 
                         let font_body = make_font(13, FW_NORMAL.0 as i32, w!("Segoe UI"));
                         SelectObject(hdc, font_body);
                         SetTextColor(hdc, COLORREF(COLOR_TEXT_MUTED));
-                        let mut body_rect = RECT { left: 185, top: 45, right: 500, bottom: 90 };
+                        let mut body_rect = RECT {
+                            left: 185,
+                            top: 45,
+                            right: 500,
+                            bottom: 90,
+                        };
                         let mut body: Vec<u16> = "Where should VrV Desk be installed?\n\nSetup will install VrV Desk into the following folder:".encode_utf16().collect();
                         DrawTextW(hdc, &mut body, &mut body_rect, DT_LEFT | DT_WORDBREAK);
 
-                        let mut space_rect = RECT { left: 185, top: 160, right: 500, bottom: 180 };
-                        let mut space: Vec<u16> = "At least 35.0 MB of free disk space is required.".encode_utf16().collect();
-                        DrawTextW(hdc, &mut space, &mut space_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                        let mut space_rect = RECT {
+                            left: 185,
+                            top: 160,
+                            right: 500,
+                            bottom: 180,
+                        };
+                        let mut space: Vec<u16> =
+                            "At least 35.0 MB of free disk space is required."
+                                .encode_utf16()
+                                .collect();
+                        DrawTextW(
+                            hdc,
+                            &mut space,
+                            &mut space_rect,
+                            DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+                        );
                     }
 
                     WizardPage::Tasks => {
                         let font_h1 = make_font(14, FW_BOLD.0 as i32, w!("Segoe UI"));
                         SelectObject(hdc, font_h1);
                         SetTextColor(hdc, COLORREF(COLOR_TEXT_MAIN));
-                        let mut h1_rect = RECT { left: 185, top: 20, right: 500, bottom: 40 };
+                        let mut h1_rect = RECT {
+                            left: 185,
+                            top: 20,
+                            right: 500,
+                            bottom: 40,
+                        };
                         let mut h1: Vec<u16> = "Select Additional Tasks".encode_utf16().collect();
-                        DrawTextW(hdc, &mut h1, &mut h1_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                        DrawTextW(
+                            hdc,
+                            &mut h1,
+                            &mut h1_rect,
+                            DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+                        );
 
                         let font_body = make_font(13, FW_NORMAL.0 as i32, w!("Segoe UI"));
                         SelectObject(hdc, font_body);
                         SetTextColor(hdc, COLORREF(COLOR_TEXT_MUTED));
-                        let mut body_rect = RECT { left: 185, top: 45, right: 500, bottom: 90 };
+                        let mut body_rect = RECT {
+                            left: 185,
+                            top: 45,
+                            right: 500,
+                            bottom: 90,
+                        };
                         let mut body: Vec<u16> = "Which additional tasks should be performed?\n\nSelect the tasks you would like Setup to perform:".encode_utf16().collect();
                         DrawTextW(hdc, &mut body, &mut body_rect, DT_LEFT | DT_WORDBREAK);
                     }
@@ -594,9 +788,19 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                         let font_h1 = make_font(14, FW_BOLD.0 as i32, w!("Segoe UI"));
                         SelectObject(hdc, font_h1);
                         SetTextColor(hdc, COLORREF(COLOR_TEXT_MAIN));
-                        let mut h1_rect = RECT { left: 185, top: 20, right: 500, bottom: 40 };
+                        let mut h1_rect = RECT {
+                            left: 185,
+                            top: 20,
+                            right: 500,
+                            bottom: 40,
+                        };
                         let mut h1: Vec<u16> = "Ready to Install".encode_utf16().collect();
-                        DrawTextW(hdc, &mut h1, &mut h1_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                        DrawTextW(
+                            hdc,
+                            &mut h1,
+                            &mut h1_rect,
+                            DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+                        );
 
                         let font_body = make_font(13, FW_NORMAL.0 as i32, w!("Segoe UI"));
                         SelectObject(hdc, font_body);
@@ -607,7 +811,12 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                             if state.create_desktop_icon { "Create desktop shortcut" } else { "No desktop shortcut" },
                             if state.create_start_menu { "Create Start Menu shortcut" } else { "No Start Menu shortcut" }
                         );
-                        let mut body_rect = RECT { left: 185, top: 50, right: 500, bottom: 250 };
+                        let mut body_rect = RECT {
+                            left: 185,
+                            top: 50,
+                            right: 500,
+                            bottom: 250,
+                        };
                         let mut body: Vec<u16> = summary.encode_utf16().collect();
                         DrawTextW(hdc, &mut body, &mut body_rect, DT_LEFT | DT_WORDBREAK);
                     }
@@ -616,21 +825,46 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                         let font_h1 = make_font(14, FW_BOLD.0 as i32, w!("Segoe UI"));
                         SelectObject(hdc, font_h1);
                         SetTextColor(hdc, COLORREF(COLOR_TEXT_MAIN));
-                        let mut h1_rect = RECT { left: 185, top: 20, right: 500, bottom: 40 };
+                        let mut h1_rect = RECT {
+                            left: 185,
+                            top: 20,
+                            right: 500,
+                            bottom: 40,
+                        };
                         let mut h1: Vec<u16> = "Installing VrV Desk...".encode_utf16().collect();
-                        DrawTextW(hdc, &mut h1, &mut h1_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                        DrawTextW(
+                            hdc,
+                            &mut h1,
+                            &mut h1_rect,
+                            DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+                        );
 
                         // Status message
                         let font_body = make_font(13, FW_NORMAL.0 as i32, w!("Segoe UI"));
                         SelectObject(hdc, font_body);
                         SetTextColor(hdc, COLORREF(COLOR_TEXT_MUTED));
                         let curr_status = state.install_status.lock().unwrap().clone();
-                        let mut status_rect = RECT { left: 185, top: 90, right: 500, bottom: 110 };
+                        let mut status_rect = RECT {
+                            left: 185,
+                            top: 90,
+                            right: 500,
+                            bottom: 110,
+                        };
                         let mut status_w: Vec<u16> = curr_status.encode_utf16().collect();
-                        DrawTextW(hdc, &mut status_w, &mut status_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                        DrawTextW(
+                            hdc,
+                            &mut status_w,
+                            &mut status_rect,
+                            DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+                        );
 
                         // Progress Bar Container
-                        let bar_border = RECT { left: 185, top: 120, right: 500, bottom: 142 };
+                        let bar_border = RECT {
+                            left: 185,
+                            top: 120,
+                            right: 500,
+                            bottom: 142,
+                        };
                         let brush_frame = CreateSolidBrush(COLORREF(0x00E0E0E0));
                         FillRect(hdc, &bar_border, brush_frame);
                         let _ = DeleteObject(brush_frame);
@@ -639,7 +873,12 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                         let pct = state.install_progress.load(Ordering::Relaxed).min(100);
                         let fill_w = ((500 - 185) * pct as i32) / 100;
                         if fill_w > 0 {
-                            let bar_fill = RECT { left: 185, top: 120, right: 185 + fill_w, bottom: 142 };
+                            let bar_fill = RECT {
+                                left: 185,
+                                top: 120,
+                                right: 185 + fill_w,
+                                bottom: 142,
+                            };
                             let brush_fill = CreateSolidBrush(COLORREF(COLOR_ACCENT));
                             FillRect(hdc, &bar_fill, brush_fill);
                             let _ = DeleteObject(brush_fill);
@@ -650,14 +889,26 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                         let font_h1 = make_font(16, FW_BOLD.0 as i32, w!("Segoe UI"));
                         SelectObject(hdc, font_h1);
                         SetTextColor(hdc, COLORREF(COLOR_TEXT_MAIN));
-                        let mut h1_rect = RECT { left: 185, top: 25, right: 500, bottom: 70 };
-                        let mut h1: Vec<u16> = "Completing the VrV Desk\nSetup Wizard".encode_utf16().collect();
+                        let mut h1_rect = RECT {
+                            left: 185,
+                            top: 25,
+                            right: 500,
+                            bottom: 70,
+                        };
+                        let mut h1: Vec<u16> = "Completing the VrV Desk\nSetup Wizard"
+                            .encode_utf16()
+                            .collect();
                         DrawTextW(hdc, &mut h1, &mut h1_rect, DT_LEFT | DT_WORDBREAK);
 
                         let font_body = make_font(13, FW_NORMAL.0 as i32, w!("Segoe UI"));
                         SelectObject(hdc, font_body);
                         SetTextColor(hdc, COLORREF(COLOR_TEXT_MUTED));
-                        let mut body_rect = RECT { left: 185, top: 80, right: 500, bottom: 180 };
+                        let mut body_rect = RECT {
+                            left: 185,
+                            top: 80,
+                            right: 500,
+                            bottom: 180,
+                        };
                         let mut body: Vec<u16> = "VrV Desk has been successfully installed on your computer.\n\nThe application may be launched by selecting the installed shortcuts or checking the option below.\n\nClick Finish to exit Setup.".encode_utf16().collect();
                         DrawTextW(hdc, &mut body, &mut body_rect, DT_LEFT | DT_WORDBREAK);
                     }
@@ -690,7 +941,9 @@ fn main() {
             create_start_menu: true,
             launch_app: true,
             install_progress: Arc::new(AtomicU32::new(0)),
-            install_status: Arc::new(std::sync::Mutex::new("Preparing installation...".to_string())),
+            install_status: Arc::new(std::sync::Mutex::new(
+                "Preparing installation...".to_string(),
+            )),
             hwnd_dest_edit: HWND::default(),
             hwnd_btn_browse: HWND::default(),
             hwnd_chk_desktop: HWND::default(),

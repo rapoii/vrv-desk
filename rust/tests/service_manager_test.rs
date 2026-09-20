@@ -65,13 +65,21 @@ async fn test_pipe_ipc_client_server_exchange() {
             args: None,
         };
         let elev_resp = pipe_ipc::send_command(&elev_req).await;
-        assert!(elev_resp.is_ok(), "is_elevated failed: {:?}", elev_resp.err());
+        assert!(
+            elev_resp.is_ok(),
+            "is_elevated failed: {:?}",
+            elev_resp.err()
+        );
         let elev_val = elev_resp.unwrap();
         assert_eq!(elev_val.status, "ok");
 
         // Send raw JSON via send_pipe_command
         let raw_resp = send_pipe_command(r#"{"cmd":"ping"}"#).await;
-        assert!(raw_resp.is_ok(), "send_pipe_command failed: {:?}", raw_resp.err());
+        assert!(
+            raw_resp.is_ok(),
+            "send_pipe_command failed: {:?}",
+            raw_resp.err()
+        );
 
         server_handle.abort();
     }

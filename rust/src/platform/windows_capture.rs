@@ -1,6 +1,8 @@
 #[cfg(windows)]
 use windows::core::ComInterface;
 #[cfg(windows)]
+use windows::Win32::Foundation::RECT;
+#[cfg(windows)]
 use windows::Win32::Graphics::Direct3D::*;
 #[cfg(windows)]
 use windows::Win32::Graphics::Direct3D11::*;
@@ -8,8 +10,6 @@ use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
 #[cfg(windows)]
 use windows::Win32::Graphics::Dxgi::*;
-#[cfg(windows)]
-use windows::Win32::Foundation::RECT;
 
 use crate::dirty_rect::{DirtyFrameInfo, DirtyRect};
 
@@ -98,7 +98,10 @@ impl DxgiCapturer {
                 .abs() as u32;
 
             if width == 0 || height == 0 {
-                return Err(format!("Invalid desktop dimensions for monitor {}: {}x{}", monitor_index, width, height));
+                return Err(format!(
+                    "Invalid desktop dimensions for monitor {}: {}x{}",
+                    monitor_index, width, height
+                ));
             }
 
             let duplication = output1
@@ -182,12 +185,18 @@ impl DxgiCapturer {
                 .abs() as u32;
 
             if width == 0 || height == 0 {
-                return Err(format!("Invalid desktop dimensions for monitor {}: {}x{}", monitor_index, width, height));
+                return Err(format!(
+                    "Invalid desktop dimensions for monitor {}: {}x{}",
+                    monitor_index, width, height
+                ));
             }
 
-            let duplication = output1
-                .DuplicateOutput(&self.device)
-                .map_err(|e| format!("DuplicateOutput for monitor {} failed: {:?}", monitor_index, e))?;
+            let duplication = output1.DuplicateOutput(&self.device).map_err(|e| {
+                format!(
+                    "DuplicateOutput for monitor {} failed: {:?}",
+                    monitor_index, e
+                )
+            })?;
 
             let staging_desc = D3D11_TEXTURE2D_DESC {
                 Width: width,
@@ -241,7 +250,12 @@ impl DxgiCapturer {
 
             let output = adapter
                 .EnumOutputs(self.current_monitor_index)
-                .map_err(|e| format!("EnumOutputs({}) failed: {:?}", self.current_monitor_index, e))?;
+                .map_err(|e| {
+                    format!(
+                        "EnumOutputs({}) failed: {:?}",
+                        self.current_monitor_index, e
+                    )
+                })?;
 
             let output1: IDXGIOutput1 = output
                 .cast()
@@ -256,10 +270,7 @@ impl DxgiCapturer {
         }
     }
 
-    pub fn acquire_next_frame(
-        &mut self,
-        timeout_ms: u32,
-    ) -> Result<Option<Vec<u8>>, String> {
+    pub fn acquire_next_frame(&mut self, timeout_ms: u32) -> Result<Option<Vec<u8>>, String> {
         self.capture_jpeg(timeout_ms, 75, self.screen_width)
     }
 
@@ -286,11 +297,8 @@ impl DxgiCapturer {
             let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
             let mut desktop_resource: Option<IDXGIResource> = None;
 
-            let hr = duplication.AcquireNextFrame(
-                timeout_ms,
-                &mut frame_info,
-                &mut desktop_resource,
-            );
+            let hr =
+                duplication.AcquireNextFrame(timeout_ms, &mut frame_info, &mut desktop_resource);
 
             if let Err(e) = hr {
                 if e.code() == DXGI_ERROR_WAIT_TIMEOUT {
@@ -426,11 +434,8 @@ impl DxgiCapturer {
             let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
             let mut desktop_resource: Option<IDXGIResource> = None;
 
-            let hr = duplication.AcquireNextFrame(
-                timeout_ms,
-                &mut frame_info,
-                &mut desktop_resource,
-            );
+            let hr =
+                duplication.AcquireNextFrame(timeout_ms, &mut frame_info, &mut desktop_resource);
 
             if let Err(e) = hr {
                 if e.code() == DXGI_ERROR_WAIT_TIMEOUT {
@@ -457,11 +462,7 @@ impl DxgiCapturer {
                     let mut rect_buf = vec![RECT::default(); count];
                     let mut actual_size = 0u32;
                     if duplication
-                        .GetFrameDirtyRects(
-                            buffer_size,
-                            rect_buf.as_mut_ptr(),
-                            &mut actual_size,
-                        )
+                        .GetFrameDirtyRects(buffer_size, rect_buf.as_mut_ptr(), &mut actual_size)
                         .is_ok()
                     {
                         for r in rect_buf {
@@ -577,10 +578,7 @@ impl DxgiCapturer {
         Err("DXGI is only supported on Windows".to_string())
     }
 
-    pub fn acquire_next_frame(
-        &mut self,
-        _timeout_ms: u32,
-    ) -> Result<Option<Vec<u8>>, String> {
+    pub fn acquire_next_frame(&mut self, _timeout_ms: u32) -> Result<Option<Vec<u8>>, String> {
         Err("DXGI is only supported on Windows".to_string())
     }
 
@@ -704,7 +702,12 @@ impl HybridScreenCapturer {
         target_width: u32,
     ) -> Result<Option<Vec<u8>>, String> {
         if self.is_headless {
-            let bgra = crate::virtual_display::generate_headless_frame(self.width, self.height, self.headless_frame_count, "Headless Canvas");
+            let bgra = crate::virtual_display::generate_headless_frame(
+                self.width,
+                self.height,
+                self.headless_frame_count,
+                "Headless Canvas",
+            );
             self.headless_frame_count += 1;
             let mut raw_pixels = vec![0u8; (self.width * self.height * 4) as usize];
             for (src_px, dst_px) in bgra.chunks_exact(4).zip(raw_pixels.chunks_exact_mut(4)) {
@@ -716,9 +719,13 @@ impl HybridScreenCapturer {
             let img = image::RgbaImage::from_raw(self.width, self.height, raw_pixels)
                 .ok_or_else(|| "Failed to construct RgbaImage from headless buffer".to_string())?;
             let rgb_img = image::DynamicImage::ImageRgba8(img).to_rgb8();
-            let mut buffer = std::io::Cursor::new(Vec::with_capacity((self.width * self.height) as usize / 4));
-            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buffer, quality);
-            encoder.encode_image(&rgb_img).map_err(|e| format!("Headless JPEG encode failed: {:?}", e))?;
+            let mut buffer =
+                std::io::Cursor::new(Vec::with_capacity((self.width * self.height) as usize / 4));
+            let mut encoder =
+                image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buffer, quality);
+            encoder
+                .encode_image(&rgb_img)
+                .map_err(|e| format!("Headless JPEG encode failed: {:?}", e))?;
             return Ok(Some(buffer.into_inner()));
         }
 
@@ -753,7 +760,12 @@ impl HybridScreenCapturer {
         }
 
         if self.is_headless {
-            let bgra = crate::virtual_display::generate_headless_frame(self.width, self.height, self.headless_frame_count, "Headless Canvas");
+            let bgra = crate::virtual_display::generate_headless_frame(
+                self.width,
+                self.height,
+                self.headless_frame_count,
+                "Headless Canvas",
+            );
             self.headless_frame_count += 1;
             let mut raw_pixels = vec![0u8; (self.width * self.height * 4) as usize];
             for (src_px, dst_px) in bgra.chunks_exact(4).zip(raw_pixels.chunks_exact_mut(4)) {
@@ -765,9 +777,13 @@ impl HybridScreenCapturer {
             let img = image::RgbaImage::from_raw(self.width, self.height, raw_pixels)
                 .ok_or_else(|| "Failed to construct RgbaImage from headless buffer".to_string())?;
             let rgb_img = image::DynamicImage::ImageRgba8(img).to_rgb8();
-            let mut buffer = std::io::Cursor::new(Vec::with_capacity((self.width * self.height) as usize / 4));
-            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buffer, quality);
-            encoder.encode_image(&rgb_img).map_err(|e| format!("Headless JPEG encode failed: {:?}", e))?;
+            let mut buffer =
+                std::io::Cursor::new(Vec::with_capacity((self.width * self.height) as usize / 4));
+            let mut encoder =
+                image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buffer, quality);
+            encoder
+                .encode_image(&rgb_img)
+                .map_err(|e| format!("Headless JPEG encode failed: {:?}", e))?;
             return Ok(Some(buffer.into_inner()));
         }
 
@@ -785,9 +801,18 @@ impl HybridScreenCapturer {
         #[cfg(windows)]
         {
             if self.is_headless {
-                let bgra = crate::virtual_display::generate_headless_frame(self.width, self.height, self.headless_frame_count, "Headless Canvas");
+                let bgra = crate::virtual_display::generate_headless_frame(
+                    self.width,
+                    self.height,
+                    self.headless_frame_count,
+                    "Headless Canvas",
+                );
                 self.headless_frame_count += 1;
-                let dirty = DirtyFrameInfo::new(self.width, self.height, vec![DirtyRect::new(0, 0, self.width as i32, self.height as i32)]);
+                let dirty = DirtyFrameInfo::new(
+                    self.width,
+                    self.height,
+                    vec![DirtyRect::new(0, 0, self.width as i32, self.height as i32)],
+                );
                 return Ok(Some((self.width, self.height, bgra, dirty)));
             }
 
@@ -812,7 +837,11 @@ impl HybridScreenCapturer {
             if let Some(ref gdi) = self.gdi {
                 match gdi.capture_raw_bgra() {
                     Ok((w, h, bgra)) => {
-                        let dirty = DirtyFrameInfo::new(w, h, vec![DirtyRect::new(0, 0, w as i32, h as i32)]);
+                        let dirty = DirtyFrameInfo::new(
+                            w,
+                            h,
+                            vec![DirtyRect::new(0, 0, w as i32, h as i32)],
+                        );
                         return Ok(Some((w, h, bgra, dirty)));
                     }
                     Err(e) => {
@@ -824,9 +853,18 @@ impl HybridScreenCapturer {
             }
 
             if self.is_headless {
-                let bgra = crate::virtual_display::generate_headless_frame(self.width, self.height, self.headless_frame_count, "Headless Canvas");
+                let bgra = crate::virtual_display::generate_headless_frame(
+                    self.width,
+                    self.height,
+                    self.headless_frame_count,
+                    "Headless Canvas",
+                );
                 self.headless_frame_count += 1;
-                let dirty = DirtyFrameInfo::new(self.width, self.height, vec![DirtyRect::new(0, 0, self.width as i32, self.height as i32)]);
+                let dirty = DirtyFrameInfo::new(
+                    self.width,
+                    self.height,
+                    vec![DirtyRect::new(0, 0, self.width as i32, self.height as i32)],
+                );
                 return Ok(Some((self.width, self.height, bgra, dirty)));
             }
 
@@ -867,5 +905,28 @@ impl HybridScreenCapturer {
     ) -> Result<Option<Vec<u8>>, String> {
         self.capture_h264_with_dirty(timeout_ms, encoder)
             .map(|opt| opt.map(|(pkt, _dirty)| pkt))
+    }
+
+    /// Capture frame from GPU/GDI, optionally downscale, and encode with H.264
+    pub fn capture_h264_scaled_with_dirty(
+        &mut self,
+        timeout_ms: u32,
+        encoder: &mut crate::video::VideoEncoder,
+        target_w: u32,
+        target_h: u32,
+        scale_buf: &mut Vec<u8>,
+    ) -> Result<Option<(Vec<u8>, DirtyFrameInfo)>, String> {
+        match self.capture_raw_bgra_with_dirty(timeout_ms)? {
+            Some((w, h, bgra, dirty)) => {
+                let packet = if target_w != w || target_h != h {
+                    crate::video::scale_bgra(&bgra, w, h, target_w, target_h, scale_buf);
+                    encoder.encode_bgra(target_w, target_h, scale_buf)?
+                } else {
+                    encoder.encode_bgra(w, h, &bgra)?
+                };
+                Ok(Some((packet, dirty)))
+            }
+            None => Ok(None),
+        }
     }
 }

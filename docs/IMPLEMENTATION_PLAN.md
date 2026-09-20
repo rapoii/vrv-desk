@@ -1148,3 +1148,14 @@ Rincian spesifikasi teknis dan audit riset pasar terhadap RustDesk, AnyDesk, dan
   - [x] Mobile/Android Client Redesign: refaktor menyeluruh pada `home_view.dart`, `mirror_view.dart`, `file_manager_view.dart`, `qr_scanner_view.dart`, `shortcut_bar.dart`, `host_mode_dialog.dart`, `pin_dialog.dart`, dan `qr_code_dialog.dart`.
   - [x] Native PC Win32/GDI Redesign (`rust/src/bin/vrv_desk.rs`): double-buffered GDI rendering dengan palet paper/ink, hard offset box shadows, rounded cards 4px, high-contrast action buttons, console terminal, dan status pills.
   - [x] Pengujian komprehensif: Seluruh 156/156 unit & integration tests lulus (83 Flutter + 73 Rust) dan seluruh live E2E Python tests terverifikasi hijau.
+
+- [x] **Phase 28: Dynamic Real-Time Streaming Quality Downscaling (PC Host & Mobile Client) - Completed & Verified**
+  - [x] Implementasi downsampling hardware/software integer-arithmetic cepat (`scale_bgra`) di `rust/src/video.rs`.
+  - [x] Penambahan method `capture_h264_scaled_with_dirty` di `rust/src/platform/windows_capture.rs`.
+  - [x] Penambahan message handler `ClientInput::SetQuality { profile }` dan acknowledgement `quality_changed` di `rust/src/host_service.rs` dan `rust/src/bin/vrv_host.rs`.
+  - [x] Dukungan 3 profil kualitas dinamis on-the-fly:
+    - **Eco:** Downscale 720p, 1.2 Mbps, 30 FPS (interval 33ms, JPEG fallback Q50).
+    - **Balanced:** Target 1080p, 2.5 Mbps, 60 FPS (interval 16ms, JPEG fallback Q70).
+    - **Ultra:** Native resolution, 6.0 Mbps, 60 FPS (interval 16ms, JPEG fallback Q90).
+  - [x] Pengujian live end-to-end terverifikasi penuh (`test_e2e_quality_switching.py`) dengan stream tetap aktif dan transisi mulus.
+

@@ -8,7 +8,9 @@ fn test_screen_capture_jpeg() {
     assert!(capturer.screen_width > 0);
     assert!(capturer.screen_height > 0);
 
-    let jpeg_bytes = capturer.capture_jpeg(60, 960).expect("Capture should succeed");
+    let jpeg_bytes = capturer
+        .capture_jpeg(60, 960)
+        .expect("Capture should succeed");
     assert!(!jpeg_bytes.is_empty());
     // Check JPEG SOI marker (0xFF, 0xD8)
     assert_eq!(jpeg_bytes[0], 0xFF);

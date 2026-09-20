@@ -10,10 +10,7 @@ use tokio_tungstenite::tungstenite::Message;
 #[serde(tag = "type")]
 pub enum AuthMessage {
     #[serde(rename = "auth_required")]
-    AuthRequired {
-        host_name: String,
-        version: String,
-    },
+    AuthRequired { host_name: String, version: String },
     #[serde(rename = "auth_verify")]
     AuthVerify {
         pin: String,
@@ -41,7 +38,10 @@ pub struct AuthGatekeeper;
 
 impl AuthGatekeeper {
     pub async fn authenticate_stream<S>(
-        ws_sender: &mut futures_util::stream::SplitSink<tokio_tungstenite::WebSocketStream<S>, Message>,
+        ws_sender: &mut futures_util::stream::SplitSink<
+            tokio_tungstenite::WebSocketStream<S>,
+            Message,
+        >,
         ws_receiver: &mut futures_util::stream::SplitStream<tokio_tungstenite::WebSocketStream<S>>,
         expected_pin: &str,
         host_name: &str,
@@ -49,11 +49,21 @@ impl AuthGatekeeper {
     where
         S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
     {
-        Self::authenticate_stream_with_unattended(ws_sender, ws_receiver, expected_pin, host_name, None).await
+        Self::authenticate_stream_with_unattended(
+            ws_sender,
+            ws_receiver,
+            expected_pin,
+            host_name,
+            None,
+        )
+        .await
     }
 
     pub async fn authenticate_stream_with_unattended<S>(
-        ws_sender: &mut futures_util::stream::SplitSink<tokio_tungstenite::WebSocketStream<S>, Message>,
+        ws_sender: &mut futures_util::stream::SplitSink<
+            tokio_tungstenite::WebSocketStream<S>,
+            Message,
+        >,
         ws_receiver: &mut futures_util::stream::SplitStream<tokio_tungstenite::WebSocketStream<S>>,
         expected_pin: &str,
         host_name: &str,
@@ -99,7 +109,8 @@ impl AuthGatekeeper {
                     {
                         let candidate = client_password.as_deref().unwrap_or(&client_pin).trim();
                         let is_pin_match = candidate == expected_pin.trim();
-                        let is_unattended_match = unattended.map_or(false, |cfg| cfg.verify(candidate));
+                        let is_unattended_match =
+                            unattended.map_or(false, |cfg| cfg.verify(candidate));
 
                         if is_pin_match || is_unattended_match {
                             let token_bytes: [u8; 16] = rand::random();
@@ -139,7 +150,9 @@ impl AuthGatekeeper {
                                     .send(Message::Text(serde_json::to_string(&fail_msg)?.into()))
                                     .await;
                                 let _ = ws_sender.close().await;
-                                return Err("Authentication failed: too many invalid attempts".into());
+                                return Err(
+                                    "Authentication failed: too many invalid attempts".into()
+                                );
                             }
                         }
                     } else {

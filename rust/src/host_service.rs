@@ -11,7 +11,9 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::audio::AudioLoopbackCapturer;
 use crate::auth::AuthGatekeeper;
-use crate::discovery::{LanBeacon, LanDiscoveryBroadcaster, DISCOVERY_MULTICAST_ADDR, DISCOVERY_PORT};
+use crate::discovery::{
+    LanBeacon, LanDiscoveryBroadcaster, DISCOVERY_MULTICAST_ADDR, DISCOVERY_PORT,
+};
 use crate::identity::DeviceIdentity;
 use crate::platform::windows_capture::HybridScreenCapturer;
 use crate::platform::windows_input::{
@@ -47,13 +49,28 @@ enum ClientInput {
     #[serde(rename = "fs_list")]
     FsList { id: String, path: Option<String> },
     #[serde(rename = "fs_read_chunk")]
-    FsReadChunk { id: String, path: String, offset: u64, length: Option<usize> },
+    FsReadChunk {
+        id: String,
+        path: String,
+        offset: u64,
+        length: Option<usize>,
+    },
     #[serde(rename = "fs_write_chunk")]
-    FsWriteChunk { id: String, path: String, offset: u64, data_b64: String, eof: bool },
+    FsWriteChunk {
+        id: String,
+        path: String,
+        offset: u64,
+        data_b64: String,
+        eof: bool,
+    },
     #[serde(rename = "fs_mkdir")]
     FsMkdir { id: String, path: String },
     #[serde(rename = "fs_delete")]
-    FsDelete { id: String, path: String, is_dir: bool },
+    FsDelete {
+        id: String,
+        path: String,
+        is_dir: bool,
+    },
     #[serde(rename = "system_sas")]
     SystemSas,
     #[serde(rename = "system_elevate")]
@@ -76,6 +93,8 @@ enum ClientInput {
     InstallVirtualDisplay,
     #[serde(rename = "uninstall_virtual_display")]
     UninstallVirtualDisplay,
+    #[serde(rename = "set_quality")]
+    SetQuality { profile: String },
 }
 
 #[derive(Clone)]
@@ -168,10 +187,15 @@ pub async fn run_host_server_loop(
     unattended: Option<Arc<std::sync::RwLock<crate::unattended::UnattendedConfig>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let unattended_arc = unattended.unwrap_or_else(|| {
-        Arc::new(std::sync::RwLock::new(crate::unattended::UnattendedConfig::load()))
+        Arc::new(std::sync::RwLock::new(
+            crate::unattended::UnattendedConfig::load(),
+        ))
     });
     let initial_pin = { pin.read().unwrap().clone() };
-    telemetry.add_log(format!("Starting VrV Desk Host (Device ID: {})...", format_six_digit_display(&device_id)));
+    telemetry.add_log(format!(
+        "Starting VrV Desk Host (Device ID: {})...",
+        format_six_digit_display(&device_id)
+    ));
     if unattended_arc.read().unwrap().enabled {
         telemetry.add_log("Unattended Access: ACTIVE (Permanent password set)".to_string());
     } else {
@@ -182,9 +206,7 @@ pub async fn run_host_server_loop(
         Ok(addr) => Some(addr.to_string()),
         Err(_) => None,
     };
-    let stun_display = stun_endpoint
-        .as_deref()
-        .unwrap_or("Local Network Only");
+    let stun_display = stun_endpoint.as_deref().unwrap_or("Local Network Only");
     telemetry.add_log(format!("STUN NAT resolution: {}", stun_display));
 
     let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
@@ -193,7 +215,10 @@ pub async fn run_host_server_loop(
 
     let beacon = LanBeacon::new(device_id.clone(), host_name.clone(), port);
     let _broadcaster = LanDiscoveryBroadcaster::start(beacon, 1500);
-    telemetry.add_log(format!("LAN discovery beacon active on UDP :{}", DISCOVERY_PORT));
+    telemetry.add_log(format!(
+        "LAN discovery beacon active on UDP :{}",
+        DISCOVERY_PORT
+    ));
 
     if let Some(url) = signal_url {
         let sig_device_id = device_id.clone();
@@ -203,7 +228,16 @@ pub async fn run_host_server_loop(
         let sig_telem = telemetry.clone();
         let sig_unattended = unattended_arc.clone();
         tokio::spawn(async move {
-            run_signal_client(url, sig_device_id, sig_host_name, sig_stun, sig_pin, sig_telem, sig_unattended).await;
+            run_signal_client(
+                url,
+                sig_device_id,
+                sig_host_name,
+                sig_stun,
+                sig_pin,
+                sig_telem,
+                sig_unattended,
+            )
+            .await;
         });
     }
 
@@ -225,7 +259,8 @@ pub async fn run_host_server_loop(
                     let ws_stream = match accept_async(stream).await {
                         Ok(ws) => ws,
                         Err(e) => {
-                            telem_clone.add_log(format!("Handshake failed from {}: {:?}", peer_addr, e));
+                            telem_clone
+                                .add_log(format!("Handshake failed from {}: {:?}", peer_addr, e));
                             telem_clone.is_connected.store(false, Ordering::Relaxed);
                             *telem_clone.connected_client.write().unwrap() = None;
                             return;
@@ -287,14 +322,19 @@ async fn run_signal_client(
                     "stun_endpoint": stun_endpoint
                 });
 
-                if ws_stream.send(Message::Text(reg_msg.to_string().into())).await.is_err() {
+                if ws_stream
+                    .send(Message::Text(reg_msg.to_string().into()))
+                    .await
+                    .is_err()
+                {
                     tokio::time::sleep(Duration::from_secs(3)).await;
                     continue;
                 }
 
                 let reg_ok = match ws_stream.next().await {
                     Some(Ok(Message::Text(t))) => {
-                        let parsed: serde_json::Value = serde_json::from_str(&t).unwrap_or_default();
+                        let parsed: serde_json::Value =
+                            serde_json::from_str(&t).unwrap_or_default();
                         parsed.get("type").and_then(|v| v.as_str()) == Some("register_ok")
                     }
                     _ => false,
@@ -305,11 +345,15 @@ async fn run_signal_client(
                     continue;
                 }
 
-                telemetry.add_log(format!("Registered with signaling broker (ID: {})", device_id));
+                telemetry.add_log(format!(
+                    "Registered with signaling broker (ID: {})",
+                    device_id
+                ));
 
                 let peer_connected = match ws_stream.next().await {
                     Some(Ok(Message::Text(t))) => {
-                        let parsed: serde_json::Value = serde_json::from_str(&t).unwrap_or_default();
+                        let parsed: serde_json::Value =
+                            serde_json::from_str(&t).unwrap_or_default();
                         parsed.get("type").and_then(|v| v.as_str()) == Some("client_connected")
                     }
                     _ => false,
@@ -322,7 +366,8 @@ async fn run_signal_client(
 
                 telemetry.add_log("Remote peer connected via signaling broker!".to_string());
                 telemetry.is_connected.store(true, Ordering::Relaxed);
-                *telemetry.connected_client.write().unwrap() = Some("Remote Peer (Signaled)".to_string());
+                *telemetry.connected_client.write().unwrap() =
+                    Some("Remote Peer (Signaled)".to_string());
 
                 let remote_peer_desc = format!("Remote-Peer via Signal ({})", signal_url);
                 let _ = handle_streaming_session(
@@ -337,7 +382,8 @@ async fn run_signal_client(
 
                 telemetry.is_connected.store(false, Ordering::Relaxed);
                 *telemetry.connected_client.write().unwrap() = None;
-                telemetry.add_log("Remote session closed. Reconnecting to broker in 2s...".to_string());
+                telemetry
+                    .add_log("Remote session closed. Reconnecting to broker in 2s...".to_string());
             }
             Err(_) => {
                 tokio::time::sleep(Duration::from_secs(5)).await;
@@ -371,43 +417,58 @@ where
     .await?;
 
     if e2ee_enabled {
-        telemetry.add_log(format!("E2EE Session established with {} (ChaCha20-Poly1305)", peer_desc));
+        telemetry.add_log(format!(
+            "E2EE Session established with {} (ChaCha20-Poly1305)",
+            peer_desc
+        ));
     } else {
         telemetry.add_log(format!("Client authenticated ({})", peer_desc));
     }
 
     let mut e2ee_frame_session = if e2ee_enabled {
-        Some(crate::transport::SecureTransportSession::from_token(&session_token))
+        Some(crate::transport::SecureTransportSession::from_token(
+            &session_token,
+        ))
     } else {
         None
     };
     let mut e2ee_audio_session = if e2ee_enabled {
-        Some(crate::transport::SecureTransportSession::from_token(&session_token))
+        Some(crate::transport::SecureTransportSession::from_token(
+            &session_token,
+        ))
     } else {
         None
     };
     let mut e2ee_input_session = if e2ee_enabled {
-        Some(crate::transport::SecureTransportSession::from_token(&session_token))
+        Some(crate::transport::SecureTransportSession::from_token(
+            &session_token,
+        ))
     } else {
         None
     };
 
-    let mut capturer = HybridScreenCapturer::new().map_err(|e| format!("Capturer init failed: {}", e))?;
+    let mut capturer =
+        HybridScreenCapturer::new().map_err(|e| format!("Capturer init failed: {}", e))?;
     let screen_w = capturer.screen_width();
     let screen_h = capturer.screen_height();
 
-    let mut h264_encoder = match crate::video::VideoEncoder::new(screen_w, screen_h, 2_500_000, 60.0) {
-        Ok(enc) => Some(enc),
-        Err(e) => {
-            telemetry.add_log(format!("H.264 init fallback: {}", e));
-            None
-        }
-    };
+    let mut h264_encoder =
+        match crate::video::VideoEncoder::new(screen_w, screen_h, 2_500_000, 60.0) {
+            Ok(enc) => Some(enc),
+            Err(e) => {
+                telemetry.add_log(format!("H.264 init fallback: {}", e));
+                None
+            }
+        };
 
     let ws_sender = Arc::new(tokio::sync::Mutex::new(ws_sender));
     let is_running = Arc::new(AtomicBool::new(true));
 
-    let (monitor_tx, mut monitor_rx) = tokio::sync::mpsc::channel::<(u32, tokio::sync::oneshot::Sender<Result<(u32, u32), String>>)>(4);
+    let (monitor_tx, mut monitor_rx) = tokio::sync::mpsc::channel::<(
+        u32,
+        tokio::sync::oneshot::Sender<Result<(u32, u32), String>>,
+    )>(4);
+    let (quality_tx, mut quality_rx) = tokio::sync::mpsc::channel::<String>(4);
 
     let is_running_frame = is_running.clone();
     let ws_sender_frame = ws_sender.clone();
@@ -418,9 +479,77 @@ where
         let mut sent_in_sec = 0u32;
         let mut bytes_in_sec = 0usize;
         let mut last_metric = tokio::time::Instant::now();
+        let mut current_profile = "balanced".to_string();
+        let mut target_w = screen_w;
+        let mut target_h = screen_h;
+        let mut scale_buffer = Vec::new();
 
         while is_running_frame.load(Ordering::Relaxed) {
             interval.tick().await;
+
+            // Process dynamic quality profile switch if requested by client
+            if let Ok(new_profile) = quality_rx.try_recv() {
+                current_profile = new_profile.to_lowercase();
+                let cur_screen_w = capturer.screen_width();
+                let cur_screen_h = capturer.screen_height();
+
+                let (new_w, new_h, new_bitrate, new_fps, tick_ms) = match current_profile.as_str() {
+                    "eco" => {
+                        let h = 720u32.min(cur_screen_h) & !1;
+                        let mut w = (((cur_screen_w as f32) * (h as f32 / cur_screen_h as f32))
+                            as u32)
+                            & !1;
+                        if w == 0 {
+                            w = 1280;
+                        }
+                        (w, h, 1_200_000, 30.0f32, 33)
+                    }
+                    "ultra" => (cur_screen_w & !1, cur_screen_h & !1, 6_000_000, 60.0f32, 16),
+                    _ => {
+                        // balanced (1080p target)
+                        let h = 1080u32.min(cur_screen_h) & !1;
+                        let mut w = (((cur_screen_w as f32) * (h as f32 / cur_screen_h as f32))
+                            as u32)
+                            & !1;
+                        if w == 0 {
+                            w = 1920;
+                        }
+                        (w, h, 2_500_000, 60.0f32, 16)
+                    }
+                };
+
+                target_w = new_w;
+                target_h = new_h;
+                let target_bitrate = new_bitrate;
+                let target_fps = new_fps;
+
+                // Re-initialize encoder with target resolution and bitrate
+                match crate::video::VideoEncoder::new(
+                    target_w,
+                    target_h,
+                    target_bitrate,
+                    target_fps,
+                ) {
+                    Ok(new_enc) => {
+                        h264_encoder = Some(new_enc);
+                        telem_frame.add_log(format!(
+                            "Stream quality switched to [{}] ({}x{} @ {}fps, {} kbps)",
+                            current_profile,
+                            target_w,
+                            target_h,
+                            target_fps as u32,
+                            target_bitrate / 1000
+                        ));
+                    }
+                    Err(e) => {
+                        telem_frame.add_log(format!(
+                            "Encoder re-init failed for {}: {}",
+                            current_profile, e
+                        ));
+                    }
+                }
+                interval = tokio::time::interval(Duration::from_millis(tick_ms));
+            }
 
             // Process monitor switch request if any
             if let Ok((target_idx, resp_tx)) = monitor_rx.try_recv() {
@@ -428,17 +557,31 @@ where
                 if let Ok((w, h)) = res {
                     let monitors = crate::monitor::enumerate_monitors();
                     if let Some(m) = monitors.iter().find(|m| m.index == target_idx) {
-                        crate::platform::windows_input::set_active_monitor_bounds(m.left, m.top, m.width, m.height);
+                        crate::platform::windows_input::set_active_monitor_bounds(
+                            m.left, m.top, m.width, m.height,
+                        );
                     }
-                    telem_frame.add_log(format!("Switched monitor capture to Display {} ({}x{})", target_idx + 1, w, h));
+                    telem_frame.add_log(format!(
+                        "Switched monitor capture to Display {} ({}x{})",
+                        target_idx + 1,
+                        w,
+                        h
+                    ));
                 }
                 let _ = resp_tx.send(res);
             }
 
             let frame_res = if let Some(ref mut enc) = h264_encoder {
-                capturer.capture_h264_with_dirty(10, enc).map(|opt| opt.map(|(bytes, _dirty)| bytes))
+                capturer
+                    .capture_h264_scaled_with_dirty(10, enc, target_w, target_h, &mut scale_buffer)
+                    .map(|opt| opt.map(|(bytes, _dirty)| bytes))
             } else {
-                capturer.capture_jpeg(10, 60, 1024)
+                let jpeg_q = match current_profile.as_str() {
+                    "eco" => 50,
+                    "ultra" => 90,
+                    _ => 70,
+                };
+                capturer.capture_jpeg(10, jpeg_q, target_w)
             };
 
             match frame_res {
@@ -456,7 +599,11 @@ where
                         frame_bytes
                     };
                     let mut sender = ws_sender_frame.lock().await;
-                    if sender.send(Message::Binary(out_bytes.into())).await.is_err() {
+                    if sender
+                        .send(Message::Binary(out_bytes.into()))
+                        .await
+                        .is_err()
+                    {
                         is_running_frame.store(false, Ordering::Relaxed);
                         break;
                     }
@@ -506,7 +653,11 @@ where
                         "text": text
                     });
                     let mut sender = ws_sender_clip.lock().await;
-                    if sender.send(Message::Text(sync_msg.to_string().into())).await.is_err() {
+                    if sender
+                        .send(Message::Text(sync_msg.to_string().into()))
+                        .await
+                        .is_err()
+                    {
                         is_running_clip.store(false, Ordering::Relaxed);
                         break;
                     }
@@ -531,7 +682,11 @@ where
                         packet
                     };
                     let mut sender = ws_sender_audio.lock().await;
-                    if sender.send(Message::Binary(out_bytes.into())).await.is_err() {
+                    if sender
+                        .send(Message::Binary(out_bytes.into()))
+                        .await
+                        .is_err()
+                    {
                         is_running_audio.store(false, Ordering::Relaxed);
                         break;
                     }
@@ -548,6 +703,7 @@ where
     let ws_sender_input = ws_sender.clone();
     let telemetry_input = telemetry.clone();
     let monitor_tx_input = monitor_tx.clone();
+    let quality_tx_input = quality_tx.clone();
     let input_task = tokio::spawn(async move {
         while let Some(msg) = ws_receiver.next().await {
             if !is_running_input.load(Ordering::Relaxed) {
@@ -584,7 +740,11 @@ where
                 if let Ok(input) = serde_json::from_str::<ClientInput>(&text) {
                     match input {
                         ClientInput::MouseMove { x, y } => {
-                            let _ = inject_input(&InputEvent::MouseMove { x, y }, screen_w as u32, screen_h as u32);
+                            let _ = inject_input(
+                                &InputEvent::MouseMove { x, y },
+                                screen_w as u32,
+                                screen_h as u32,
+                            );
                         }
                         ClientInput::MouseDown { button } => {
                             let btn = match button.as_deref() {
@@ -592,7 +752,15 @@ where
                                 Some("middle") => MouseButton::Middle,
                                 _ => MouseButton::Left,
                             };
-                            let _ = inject_input(&InputEvent::MouseDown { x: 0.0, y: 0.0, button: btn }, screen_w as u32, screen_h as u32);
+                            let _ = inject_input(
+                                &InputEvent::MouseDown {
+                                    x: 0.0,
+                                    y: 0.0,
+                                    button: btn,
+                                },
+                                screen_w as u32,
+                                screen_h as u32,
+                            );
                         }
                         ClientInput::MouseUp { button } => {
                             let btn = match button.as_deref() {
@@ -600,19 +768,43 @@ where
                                 Some("middle") => MouseButton::Middle,
                                 _ => MouseButton::Left,
                             };
-                            let _ = inject_input(&InputEvent::MouseUp { x: 0.0, y: 0.0, button: btn }, screen_w as u32, screen_h as u32);
+                            let _ = inject_input(
+                                &InputEvent::MouseUp {
+                                    x: 0.0,
+                                    y: 0.0,
+                                    button: btn,
+                                },
+                                screen_w as u32,
+                                screen_h as u32,
+                            );
                         }
                         ClientInput::TouchTap { x, y } => {
-                            let _ = inject_input(&InputEvent::TouchTap { x, y }, screen_w as u32, screen_h as u32);
+                            let _ = inject_input(
+                                &InputEvent::TouchTap { x, y },
+                                screen_w as u32,
+                                screen_h as u32,
+                            );
                         }
                         ClientInput::MouseWheel { delta_y } => {
-                            let _ = inject_input(&InputEvent::MouseWheel { delta_y }, screen_w as u32, screen_h as u32);
+                            let _ = inject_input(
+                                &InputEvent::MouseWheel { delta_y },
+                                screen_w as u32,
+                                screen_h as u32,
+                            );
                         }
                         ClientInput::KeyDown { keycode } => {
-                            let _ = inject_input(&InputEvent::KeyDown { keycode }, screen_w as u32, screen_h as u32);
+                            let _ = inject_input(
+                                &InputEvent::KeyDown { keycode },
+                                screen_w as u32,
+                                screen_h as u32,
+                            );
                         }
                         ClientInput::KeyUp { keycode } => {
-                            let _ = inject_input(&InputEvent::KeyUp { keycode }, screen_w as u32, screen_h as u32);
+                            let _ = inject_input(
+                                &InputEvent::KeyUp { keycode },
+                                screen_w as u32,
+                                screen_h as u32,
+                            );
                         }
                         ClientInput::TypeText { text } => {
                             let _ = inject_unicode_text(&text);
@@ -630,48 +822,75 @@ where
                         ClientInput::FsList { id, path } => {
                             let p = path.unwrap_or_default();
                             let resp = match crate::file_manager::FileManager::list_directory(&p) {
-                                Ok((canonical_path, entries)) => serde_json::to_string(&crate::file_manager::FsListResponse {
-                                    msg_type: "fs_list_resp".to_string(),
-                                    id,
-                                    path: canonical_path,
-                                    entries,
-                                }).unwrap(),
-                                Err(e) => serde_json::to_string(&crate::file_manager::FsErrorResponse {
-                                    msg_type: "fs_error".to_string(),
-                                    id,
-                                    error: e,
-                                }).unwrap(),
+                                Ok((canonical_path, entries)) => {
+                                    serde_json::to_string(&crate::file_manager::FsListResponse {
+                                        msg_type: "fs_list_resp".to_string(),
+                                        id,
+                                        path: canonical_path,
+                                        entries,
+                                    })
+                                    .unwrap()
+                                }
+                                Err(e) => {
+                                    serde_json::to_string(&crate::file_manager::FsErrorResponse {
+                                        msg_type: "fs_error".to_string(),
+                                        id,
+                                        error: e,
+                                    })
+                                    .unwrap()
+                                }
                             };
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }
-                        ClientInput::FsReadChunk { id, path, offset, length } => {
+                        ClientInput::FsReadChunk {
+                            id,
+                            path,
+                            offset,
+                            length,
+                        } => {
                             let len = length.unwrap_or(65536);
-                            let resp = match crate::file_manager::FileManager::read_chunk(&path, offset, len) {
+                            let resp = match crate::file_manager::FileManager::read_chunk(
+                                &path, offset, len,
+                            ) {
                                 Ok(mut r) => {
                                     r.id = id;
                                     serde_json::to_string(&r).unwrap()
                                 }
-                                Err(e) => serde_json::to_string(&crate::file_manager::FsErrorResponse {
-                                    msg_type: "fs_error".to_string(),
-                                    id,
-                                    error: e,
-                                }).unwrap(),
+                                Err(e) => {
+                                    serde_json::to_string(&crate::file_manager::FsErrorResponse {
+                                        msg_type: "fs_error".to_string(),
+                                        id,
+                                        error: e,
+                                    })
+                                    .unwrap()
+                                }
                             };
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }
-                        ClientInput::FsWriteChunk { id, path, offset, data_b64, eof } => {
-                            let resp = match crate::file_manager::FileManager::write_chunk(&path, offset, &data_b64, eof) {
+                        ClientInput::FsWriteChunk {
+                            id,
+                            path,
+                            offset,
+                            data_b64,
+                            eof,
+                        } => {
+                            let resp = match crate::file_manager::FileManager::write_chunk(
+                                &path, offset, &data_b64, eof,
+                            ) {
                                 Ok(mut r) => {
                                     r.id = id;
                                     serde_json::to_string(&r).unwrap()
                                 }
-                                Err(e) => serde_json::to_string(&crate::file_manager::FsErrorResponse {
-                                    msg_type: "fs_error".to_string(),
-                                    id,
-                                    error: e,
-                                }).unwrap(),
+                                Err(e) => {
+                                    serde_json::to_string(&crate::file_manager::FsErrorResponse {
+                                        msg_type: "fs_error".to_string(),
+                                        id,
+                                        error: e,
+                                    })
+                                    .unwrap()
+                                }
                             };
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
@@ -679,25 +898,32 @@ where
                         ClientInput::FsMkdir { id, path } => {
                             let resp = match crate::file_manager::FileManager::create_dir(&path) {
                                 Ok(_) => {
-                                    telemetry_input.add_log(format!("Remote created dir: {}", path));
+                                    telemetry_input
+                                        .add_log(format!("Remote created dir: {}", path));
                                     serde_json::to_string(&crate::file_manager::FsActionResponse {
                                         msg_type: "fs_action_resp".to_string(),
                                         id,
                                         action: "mkdir".to_string(),
                                         success: true,
-                                    }).unwrap()
+                                    })
+                                    .unwrap()
                                 }
-                                Err(e) => serde_json::to_string(&crate::file_manager::FsErrorResponse {
-                                    msg_type: "fs_error".to_string(),
-                                    id,
-                                    error: e,
-                                }).unwrap(),
+                                Err(e) => {
+                                    serde_json::to_string(&crate::file_manager::FsErrorResponse {
+                                        msg_type: "fs_error".to_string(),
+                                        id,
+                                        error: e,
+                                    })
+                                    .unwrap()
+                                }
                             };
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }
                         ClientInput::FsDelete { id, path, is_dir } => {
-                            let resp = match crate::file_manager::FileManager::delete_item(&path, is_dir) {
+                            let resp = match crate::file_manager::FileManager::delete_item(
+                                &path, is_dir,
+                            ) {
                                 Ok(_) => {
                                     telemetry_input.add_log(format!("Remote deleted: {}", path));
                                     serde_json::to_string(&crate::file_manager::FsActionResponse {
@@ -705,20 +931,28 @@ where
                                         id,
                                         action: "delete".to_string(),
                                         success: true,
-                                    }).unwrap()
+                                    })
+                                    .unwrap()
                                 }
-                                Err(e) => serde_json::to_string(&crate::file_manager::FsErrorResponse {
-                                    msg_type: "fs_error".to_string(),
-                                    id,
-                                    error: e,
-                                }).unwrap(),
+                                Err(e) => {
+                                    serde_json::to_string(&crate::file_manager::FsErrorResponse {
+                                        msg_type: "fs_error".to_string(),
+                                        id,
+                                        error: e,
+                                    })
+                                    .unwrap()
+                                }
                             };
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }
                         ClientInput::SystemSas => {
-                            telemetry_input.add_log("Client requested Secure Attention Sequence (Ctrl+Alt+Del)".to_string());
-                            let pipe_res = crate::service_manager::send_pipe_command(r#"{"cmd":"sas"}"#).await;
+                            telemetry_input.add_log(
+                                "Client requested Secure Attention Sequence (Ctrl+Alt+Del)"
+                                    .to_string(),
+                            );
+                            let pipe_res =
+                                crate::service_manager::send_pipe_command(r#"{"cmd":"sas"}"#).await;
                             let success = if pipe_res.is_ok() {
                                 true
                             } else {
@@ -727,20 +961,26 @@ where
                             let resp = serde_json::json!({
                                 "type": "system_sas_result",
                                 "success": success,
-                            }).to_string();
+                            })
+                            .to_string();
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }
                         ClientInput::SystemElevate => {
-                            telemetry_input.add_log("Client requested host UAC elevation".to_string());
+                            telemetry_input
+                                .add_log("Client requested host UAC elevation".to_string());
                             let curr_exe = std::env::current_exe().unwrap_or_default();
                             let exe_str = curr_exe.to_str().unwrap_or("");
-                            let res = crate::service_manager::request_elevation(Some(exe_str), Some("--elevated"));
+                            let res = crate::service_manager::request_elevation(
+                                Some(exe_str),
+                                Some("--elevated"),
+                            );
                             let resp = serde_json::json!({
                                 "type": "system_elevate_result",
                                 "success": res.is_ok(),
                                 "error": res.err(),
-                            }).to_string();
+                            })
+                            .to_string();
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }
@@ -752,18 +992,23 @@ where
                                 "running": status.running,
                                 "elevated": status.elevated,
                                 "is_service": status.is_service,
-                            }).to_string();
+                            })
+                            .to_string();
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }
                         ClientInput::SystemDesktopSwitch => {
-                            telemetry_input.add_log("Client requested desktop switch to active input desktop".to_string());
+                            telemetry_input.add_log(
+                                "Client requested desktop switch to active input desktop"
+                                    .to_string(),
+                            );
                             let res = crate::service_manager::switch_to_input_desktop();
                             let resp = serde_json::json!({
                                 "type": "system_desktop_switch_result",
                                 "success": res.is_ok(),
                                 "error": res.err(),
-                            }).to_string();
+                            })
+                            .to_string();
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }
@@ -772,16 +1017,20 @@ where
                             let resp = serde_json::json!({
                                 "type": "monitors_list",
                                 "monitors": monitors,
-                            }).to_string();
+                            })
+                            .to_string();
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }
                         ClientInput::SwitchMonitor { index } => {
-                            telemetry_input.add_log(format!("Client requested switch to monitor {}", index));
+                            telemetry_input
+                                .add_log(format!("Client requested switch to monitor {}", index));
                             let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
                             let send_ok = monitor_tx_input.send((index, resp_tx)).await.is_ok();
                             let res = if send_ok {
-                                resp_rx.await.unwrap_or(Err("Capture thread closed".to_string()))
+                                resp_rx
+                                    .await
+                                    .unwrap_or(Err("Capture thread closed".to_string()))
                             } else {
                                 Err("Failed to queue monitor switch".to_string())
                             };
@@ -800,7 +1049,8 @@ where
                                     "index": index,
                                     "error": e,
                                 }),
-                            }.to_string();
+                            }
+                            .to_string();
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }
@@ -812,12 +1062,14 @@ where
                                 "enabled": enabled,
                                 "success": res.is_ok(),
                                 "error": res.err(),
-                            }).to_string();
+                            })
+                            .to_string();
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }
                         ClientInput::SystemAction { action } => {
-                            telemetry_input.add_log(format!("Executing remote system action: {}", action));
+                            telemetry_input
+                                .add_log(format!("Executing remote system action: {}", action));
                             let res = crate::system_actions::execute_system_action(&action);
                             let (success, msg) = match res {
                                 Ok(m) => (true, m),
@@ -828,7 +1080,8 @@ where
                                 "action": action,
                                 "success": success,
                                 "message": msg,
-                            }).to_string();
+                            })
+                            .to_string();
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }
@@ -843,17 +1096,30 @@ where
                                 "modes": status.modes,
                                 "is_headless": status.is_headless,
                                 "physical_monitor_count": status.physical_monitor_count,
-                            }).to_string();
+                            })
+                            .to_string();
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }
                         ClientInput::InstallVirtualDisplay => {
-                            telemetry_input.add_log("Client requested virtual display driver installation".to_string());
-                            let result = match crate::service_manager::send_pipe_command(r#"{"cmd":"install_virtual_display"}"#).await {
+                            telemetry_input.add_log(
+                                "Client requested virtual display driver installation".to_string(),
+                            );
+                            let result = match crate::service_manager::send_pipe_command(
+                                r#"{"cmd":"install_virtual_display"}"#,
+                            )
+                            .await
+                            {
                                 Ok(pipe_str) => {
-                                    if let Ok(pipe_resp) = serde_json::from_str::<crate::service_manager::PipeResponse>(&pipe_str) {
+                                    if let Ok(pipe_resp) = serde_json::from_str::<
+                                        crate::service_manager::PipeResponse,
+                                    >(
+                                        &pipe_str
+                                    ) {
                                         if pipe_resp.status == "ok" {
-                                            Ok(pipe_resp.message.unwrap_or_else(|| "Driver installed via service".to_string()))
+                                            Ok(pipe_resp.message.unwrap_or_else(|| {
+                                                "Driver installed via service".to_string()
+                                            }))
                                         } else {
                                             crate::virtual_display::install_driver(None)
                                         }
@@ -871,17 +1137,31 @@ where
                                 "type": "install_virtual_display_res",
                                 "success": success,
                                 "message": msg,
-                            }).to_string();
+                            })
+                            .to_string();
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }
                         ClientInput::UninstallVirtualDisplay => {
-                            telemetry_input.add_log("Client requested virtual display driver uninstallation".to_string());
-                            let result = match crate::service_manager::send_pipe_command(r#"{"cmd":"uninstall_virtual_display"}"#).await {
+                            telemetry_input.add_log(
+                                "Client requested virtual display driver uninstallation"
+                                    .to_string(),
+                            );
+                            let result = match crate::service_manager::send_pipe_command(
+                                r#"{"cmd":"uninstall_virtual_display"}"#,
+                            )
+                            .await
+                            {
                                 Ok(pipe_str) => {
-                                    if let Ok(pipe_resp) = serde_json::from_str::<crate::service_manager::PipeResponse>(&pipe_str) {
+                                    if let Ok(pipe_resp) = serde_json::from_str::<
+                                        crate::service_manager::PipeResponse,
+                                    >(
+                                        &pipe_str
+                                    ) {
                                         if pipe_resp.status == "ok" {
-                                            Ok(pipe_resp.message.unwrap_or_else(|| "Driver uninstalled via service".to_string()))
+                                            Ok(pipe_resp.message.unwrap_or_else(|| {
+                                                "Driver uninstalled via service".to_string()
+                                            }))
                                         } else {
                                             crate::virtual_display::uninstall_driver()
                                         }
@@ -899,7 +1179,51 @@ where
                                 "type": "uninstall_virtual_display_res",
                                 "success": success,
                                 "message": msg,
-                            }).to_string();
+                            })
+                            .to_string();
+                            let mut sender = ws_sender_input.lock().await;
+                            let _ = sender.send(Message::Text(resp.into())).await;
+                        }
+                        ClientInput::SetQuality { profile } => {
+                            telemetry_input.add_log(format!(
+                                "Client requested streaming quality profile: {}",
+                                profile
+                            ));
+                            let _ = quality_tx_input.send(profile.clone()).await;
+
+                            let (w, h, kbps, fps) = match profile.to_lowercase().as_str() {
+                                "eco" => {
+                                    let h = 720u32.min(screen_h as u32) & !1;
+                                    let mut w = (((screen_w as f32) * (h as f32 / screen_h as f32))
+                                        as u32)
+                                        & !1;
+                                    if w == 0 {
+                                        w = 1280;
+                                    }
+                                    (w, h, 1200, 30)
+                                }
+                                "ultra" => (screen_w as u32 & !1, screen_h as u32 & !1, 6000, 60),
+                                _ => {
+                                    let h = 1080u32.min(screen_h as u32) & !1;
+                                    let mut w = (((screen_w as f32) * (h as f32 / screen_h as f32))
+                                        as u32)
+                                        & !1;
+                                    if w == 0 {
+                                        w = 1920;
+                                    }
+                                    (w, h, 2500, 60)
+                                }
+                            };
+
+                            let resp = serde_json::json!({
+                                "type": "quality_changed",
+                                "profile": profile,
+                                "width": w,
+                                "height": h,
+                                "bitrate_kbps": kbps,
+                                "fps": fps,
+                            })
+                            .to_string();
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }

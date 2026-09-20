@@ -36,7 +36,10 @@ fn test_dxgi_capturer_initialization_and_capture() {
             }
         }
         Err(e) => {
-            println!("ℹ️ DxgiCapturer::new() failed on this system (fallback expected): {}", e);
+            println!(
+                "ℹ️ DxgiCapturer::new() failed on this system (fallback expected): {}",
+                e
+            );
         }
     }
 }

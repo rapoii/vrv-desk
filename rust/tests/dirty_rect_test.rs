@@ -51,8 +51,8 @@ fn test_dirty_rect_bounding_box() {
 #[test]
 fn test_dirty_rect_total_area() {
     let rects = vec![
-        DirtyRect::new(0, 0, 10, 10),    // 100
-        DirtyRect::new(20, 20, 30, 30),  // 100
+        DirtyRect::new(0, 0, 10, 10),   // 100
+        DirtyRect::new(20, 20, 30, 30), // 100
     ];
     assert_eq!(DirtyRect::total_area(&rects), 200);
 }
@@ -66,7 +66,7 @@ fn test_dirty_frame_info_metrics() {
     assert_eq!(info.rect_count(), 1);
     assert_eq!(info.total_dirty_area(), 10_000);
     assert_eq!(info.bounding_box(), Some(r1));
-    
+
     // Total screen area = 1920 * 1080 = 2,073,600
     // Ratio = 10,000 / 2,073,600 ≈ 0.00482 (0.48%)
     let ratio = info.dirty_ratio();
@@ -96,7 +96,10 @@ fn test_dxgi_capturer_dirty_rect_api() {
         }
     };
 
-    println!("DXGI Capturer initialized: {}x{}", capturer.width, capturer.height);
+    println!(
+        "DXGI Capturer initialized: {}x{}",
+        capturer.width, capturer.height
+    );
     // Attempt to capture with dirty rects (timeout 100ms)
     match capturer.capture_raw_bgra_with_dirty(100) {
         Ok(Some((w, h, bgra, dirty_info))) => {
@@ -135,20 +138,31 @@ fn test_hybrid_capturer_dirty_rect_api() {
         }
     };
 
-    println!("Hybrid Capturer initialized: {}x{}, is_dxgi: {}", capturer.screen_width(), capturer.screen_height(), capturer.is_dxgi());
+    println!(
+        "Hybrid Capturer initialized: {}x{}, is_dxgi: {}",
+        capturer.screen_width(),
+        capturer.screen_height(),
+        capturer.is_dxgi()
+    );
     match capturer.capture_raw_bgra_with_dirty(100) {
         Ok(Some((w, h, bgra, dirty_info))) => {
             assert_eq!(w, capturer.screen_width());
             assert_eq!(h, capturer.screen_height());
             assert_eq!(bgra.len(), (w * h * 4) as usize);
             assert!(dirty_info.rect_count() > 0 || dirty_info.is_empty());
-            println!("Hybrid captured frame with dirty ratio: {:.4}", dirty_info.dirty_ratio());
+            println!(
+                "Hybrid captured frame with dirty ratio: {:.4}",
+                dirty_info.dirty_ratio()
+            );
         }
         Ok(None) => {
             println!("Screen unchanged during test interval (static screen)");
         }
         Err(e) => {
-            println!("Capture returned error (normal if no active display session): {}", e);
+            println!(
+                "Capture returned error (normal if no active display session): {}",
+                e
+            );
         }
     }
 }

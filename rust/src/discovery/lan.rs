@@ -54,7 +54,10 @@ impl LanDiscoveryBroadcaster {
             let socket = match UdpSocket::bind("0.0.0.0:0") {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("[LanDiscoveryBroadcaster] Failed to bind UDP socket: {:?}", e);
+                    eprintln!(
+                        "[LanDiscoveryBroadcaster] Failed to bind UDP socket: {:?}",
+                        e
+                    );
                     return;
                 }
             };
@@ -64,7 +67,10 @@ impl LanDiscoveryBroadcaster {
             }
 
             if let Err(e) = socket.set_multicast_ttl_v4(4) {
-                eprintln!("[LanDiscoveryBroadcaster] Warning: Failed to set multicast TTL: {:?}", e);
+                eprintln!(
+                    "[LanDiscoveryBroadcaster] Warning: Failed to set multicast TTL: {:?}",
+                    e
+                );
             }
 
             let multicast_target: Result<SocketAddr, _> =

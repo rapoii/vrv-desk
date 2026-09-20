@@ -1,17 +1,13 @@
 use mirror_core::discovery::{
-    LanBeacon, LanDiscoveryBroadcaster, DEFAULT_BROADCAST_INTERVAL_MS,
-    DISCOVERY_MULTICAST_ADDR, DISCOVERY_PORT,
+    LanBeacon, LanDiscoveryBroadcaster, DEFAULT_BROADCAST_INTERVAL_MS, DISCOVERY_MULTICAST_ADDR,
+    DISCOVERY_PORT,
 };
 use std::net::UdpSocket;
 use std::time::Duration;
 
 #[test]
 fn test_lan_beacon_serialization_roundtrip() {
-    let beacon = LanBeacon::new(
-        "123456".to_string(),
-        "Test-Host".to_string(),
-        53211,
-    );
+    let beacon = LanBeacon::new("123456".to_string(), "Test-Host".to_string(), 53211);
 
     assert_eq!(beacon.device_id, "123456");
     assert_eq!(beacon.device_name, "Test-Host");
@@ -44,11 +40,7 @@ fn test_lan_discovery_broadcast_receive_local() {
     assert_eq!(DISCOVERY_PORT, 53210);
     assert_eq!(DEFAULT_BROADCAST_INTERVAL_MS, 1500);
 
-    let beacon = LanBeacon::new(
-        "TEST99".to_string(),
-        "Discovery-Tester".to_string(),
-        53211,
-    );
+    let beacon = LanBeacon::new("TEST99".to_string(), "Discovery-Tester".to_string(), 53211);
 
     // Bind a listener socket on localhost or wildcard port to test socket creation & shutdown
     let listener = UdpSocket::bind("127.0.0.1:0").expect("Failed to bind test UDP listener");
@@ -68,11 +60,7 @@ fn test_lan_discovery_broadcast_receive_local() {
 
 #[test]
 fn test_lan_discovery_broadcaster_drop() {
-    let beacon = LanBeacon::new(
-        "DROP01".to_string(),
-        "Drop-Tester".to_string(),
-        53211,
-    );
+    let beacon = LanBeacon::new("DROP01".to_string(), "Drop-Tester".to_string(), 53211);
 
     let broadcaster = LanDiscoveryBroadcaster::start(beacon, 100);
     std::thread::sleep(Duration::from_millis(150));

@@ -30,7 +30,8 @@ fn test_opus_encoder_init_and_feed() {
     let mut pcm_bytes = Vec::with_capacity(frame_samples * 2 * 2);
 
     for i in 0..frame_samples {
-        let val = ((i as f32 * 440.0 * 2.0 * std::f32::consts::PI / 48000.0).sin() * 16000.0) as i16;
+        let val =
+            ((i as f32 * 440.0 * 2.0 * std::f32::consts::PI / 48000.0).sin() * 16000.0) as i16;
         pcm_bytes.extend_from_slice(&val.to_le_bytes()); // Left
         pcm_bytes.extend_from_slice(&val.to_le_bytes()); // Right
     }
@@ -42,10 +43,17 @@ fn test_opus_encoder_init_and_feed() {
         .feed_pcm_and_encode(&pcm_bytes)
         .expect("Encoding frame should succeed");
 
-    assert_eq!(packets.len(), 1, "Should emit exactly 1 packet for a 20ms frame");
+    assert_eq!(
+        packets.len(),
+        1,
+        "Should emit exactly 1 packet for a 20ms frame"
+    );
 
     let packet = &packets[0];
-    assert!(is_audio_packet(packet), "Packet should start with VAUD magic");
+    assert!(
+        is_audio_packet(packet),
+        "Packet should start with VAUD magic"
+    );
 
     let header = decode_audio_packet(packet).expect("Header should be decoded");
     assert_eq!(header.format, AUDIO_FORMAT_OPUS);
@@ -62,20 +70,30 @@ fn test_opus_encoder_init_and_feed() {
     );
 
     assert!(payload_len > 0);
-    assert!(payload_len < 300, "Opus 20ms frame payload should be < 300 bytes");
+    assert!(
+        payload_len < 300,
+        "Opus 20ms frame payload should be < 300 bytes"
+    );
     let compression_ratio = 3840.0 / payload_len as f32;
-    assert!(compression_ratio > 10.0, "Compression ratio should be > 10x");
+    assert!(
+        compression_ratio > 10.0,
+        "Compression ratio should be > 10x"
+    );
 }
 
 #[test]
 fn test_opus_encoder_partial_chunks() {
-    let mut encoder = OpusAudioEncoder::new(48000, 2, 64_000)
-        .expect("OpusAudioEncoder should initialize");
+    let mut encoder =
+        OpusAudioEncoder::new(48000, 2, 64_000).expect("OpusAudioEncoder should initialize");
 
     // Feed 1000 bytes (< 3840 bytes)
     let partial = vec![0u8; 1000];
     let packets1 = encoder.feed_pcm_and_encode(&partial).unwrap();
-    assert_eq!(packets1.len(), 0, "Partial chunk should not emit packets yet");
+    assert_eq!(
+        packets1.len(),
+        0,
+        "Partial chunk should not emit packets yet"
+    );
 
     // Feed another 2840 bytes (now 3840 total = exactly 1 frame)
     let remainder = vec![0u8; 2840];
@@ -99,10 +117,15 @@ fn test_audio_loopback_capturer_produces_opus() {
 
     let packet_opt = capturer.read_packet_timeout(Duration::from_millis(500));
     if !capturer.is_mock && packet_opt.is_none() {
-        println!("Live audio capturer silent (no system audio currently playing) — passing gracefully");
+        println!(
+            "Live audio capturer silent (no system audio currently playing) — passing gracefully"
+        );
         return;
     }
-    assert!(packet_opt.is_some(), "Audio capturer should emit packet within timeout");
+    assert!(
+        packet_opt.is_some(),
+        "Audio capturer should emit packet within timeout"
+    );
 
     let packet = packet_opt.unwrap();
     assert!(is_audio_packet(&packet));
@@ -112,7 +135,10 @@ fn test_audio_loopback_capturer_produces_opus() {
     assert_eq!(header.channels, capturer.channels);
     assert_eq!(header.sample_rate, capturer.sample_rate);
     assert!(header.payload_len > 0);
-    assert!(header.payload_len < 300, "Mock or live Opus payload should be compact");
+    assert!(
+        header.payload_len < 300,
+        "Mock or live Opus payload should be compact"
+    );
 }
 
 #[test]

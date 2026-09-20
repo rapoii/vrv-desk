@@ -37,7 +37,10 @@ unsafe extern "system" fn service_handler(control: u32) {
 
 #[cfg(windows)]
 unsafe extern "system" fn service_main(_argc: u32, _argv: *mut PWSTR) {
-    let service_name: Vec<u16> = SERVICE_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+    let service_name: Vec<u16> = SERVICE_NAME
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
     let handle = RegisterServiceCtrlHandlerW(PCWSTR(service_name.as_ptr()), Some(service_handler));
 
     if let Ok(h) = handle {
@@ -184,7 +187,10 @@ fn main() {
     // Default mode: Attempt SCM dispatch
     #[cfg(windows)]
     unsafe {
-        let service_name: Vec<u16> = SERVICE_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+        let service_name: Vec<u16> = SERVICE_NAME
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
         let service_table = [
             SERVICE_TABLE_ENTRYW {
                 lpServiceName: PWSTR(service_name.as_ptr() as *mut _),

@@ -68,7 +68,8 @@ pub struct FsErrorResponse {
 // Zero-dependency RFC 4648 Base64 Implementation
 // ---------------------------------------------------------------------------
 
-const BASE64_ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const BASE64_ALPHABET: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 pub fn base64_encode(data: &[u8]) -> String {
     let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
@@ -155,21 +156,28 @@ impl FileManager {
             return Err(format!("Path is not a directory: {}", trimmed));
         }
 
-        let canonical_str = path.canonicalize()
+        let canonical_str = path
+            .canonicalize()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| trimmed.to_string())
             .trim_start_matches(r"\\?\")
             .to_string();
 
         let mut entries = Vec::new();
-        let read_dir = fs::read_dir(path).map_err(|e| format!("Failed to read directory: {}", e))?;
+        let read_dir =
+            fs::read_dir(path).map_err(|e| format!("Failed to read directory: {}", e))?;
 
         for entry in read_dir.flatten() {
             let file_name = entry.file_name().to_string_lossy().to_string();
             let metadata = entry.metadata().ok();
             let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
-            let size = if is_dir { 0 } else { metadata.as_ref().map(|m| m.len()).unwrap_or(0) };
-            let modified_ms = metadata.and_then(|m| m.modified().ok())
+            let size = if is_dir {
+                0
+            } else {
+                metadata.as_ref().map(|m| m.len()).unwrap_or(0)
+            };
+            let modified_ms = metadata
+                .and_then(|m| m.modified().ok())
                 .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                 .map(|d| d.as_millis() as u64)
                 .unwrap_or(0);
@@ -227,7 +235,14 @@ impl FileManager {
         // Add user profile standard paths if available
         if let Ok(user_profile) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
             let p = Path::new(&user_profile);
-            for folder in &["Desktop", "Documents", "Downloads", "Pictures", "Music", "Videos"] {
+            for folder in &[
+                "Desktop",
+                "Documents",
+                "Downloads",
+                "Pictures",
+                "Music",
+                "Videos",
+            ] {
                 let sub = p.join(folder);
                 if sub.exists() {
                     entries.push(FsEntry {
@@ -244,7 +259,11 @@ impl FileManager {
     }
 
     /// Reads a single chunk of a file at given byte offset.
-    pub fn read_chunk(path_str: &str, offset: u64, max_length: usize) -> Result<FsReadResponse, String> {
+    pub fn read_chunk(
+        path_str: &str,
+        offset: u64,
+        max_length: usize,
+    ) -> Result<FsReadResponse, String> {
         let path = Path::new(path_str);
         if !path.exists() {
             return Err(format!("File not found: {}", path_str));
@@ -253,11 +272,14 @@ impl FileManager {
         let mut file = File::open(path).map_err(|e| format!("Cannot open file: {}", e))?;
         let total_size = file.metadata().map_err(|e| e.to_string())?.len();
 
-        file.seek(SeekFrom::Start(offset)).map_err(|e| format!("Seek failed: {}", e))?;
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|e| format!("Seek failed: {}", e))?;
 
         let chunk_size = max_length.min(65536);
         let mut buf = vec![0u8; chunk_size];
-        let bytes_read = file.read(&mut buf).map_err(|e| format!("Read failed: {}", e))?;
+        let bytes_read = file
+            .read(&mut buf)
+            .map_err(|e| format!("Read failed: {}", e))?;
         buf.truncate(bytes_read);
 
         let eof = (offset + bytes_read as u64) >= total_size;
@@ -275,7 +297,12 @@ impl FileManager {
     }
 
     /// Writes a chunk of data into a target file at given offset.
-    pub fn write_chunk(path_str: &str, offset: u64, data_b64: &str, eof: bool) -> Result<FsWriteResponse, String> {
+    pub fn write_chunk(
+        path_str: &str,
+        offset: u64,
+        data_b64: &str,
+        eof: bool,
+    ) -> Result<FsWriteResponse, String> {
         let data = base64_decode(data_b64)?;
         let path = Path::new(path_str);
 
@@ -292,8 +319,10 @@ impl FileManager {
                 .map_err(|e| format!("Failed to open file for append: {}", e))?
         };
 
-        file.seek(SeekFrom::Start(offset)).map_err(|e| format!("Seek failed: {}", e))?;
-        file.write_all(&data).map_err(|e| format!("Write failed: {}", e))?;
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|e| format!("Seek failed: {}", e))?;
+        file.write_all(&data)
+            .map_err(|e| format!("Write failed: {}", e))?;
         file.flush().map_err(|e| format!("Flush failed: {}", e))?;
 
         Ok(FsWriteResponse {

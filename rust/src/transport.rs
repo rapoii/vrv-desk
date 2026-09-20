@@ -74,10 +74,12 @@ impl SecureTransportSession {
         nonce_bytes[0..8].copy_from_slice(&seq_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
-        let plaintext = self
-            .cipher
-            .decrypt(nonce, &packet[12..])
-            .map_err(|e| format!("ChaCha20-Poly1305 authentication/decryption failed: {:?}", e))?;
+        let plaintext = self.cipher.decrypt(nonce, &packet[12..]).map_err(|e| {
+            format!(
+                "ChaCha20-Poly1305 authentication/decryption failed: {:?}",
+                e
+            )
+        })?;
 
         self.recv_seq = seq;
         Ok(plaintext)

@@ -29,12 +29,15 @@ pub fn enumerate_monitors() -> Vec<MonitorInfo> {
                 while let Ok(output) = adapter.EnumOutputs(output_idx) {
                     let mut desc = DXGI_OUTPUT_DESC::default();
                     if output.GetDesc(&mut desc).is_ok() {
-                        let w = (desc.DesktopCoordinates.right - desc.DesktopCoordinates.left).abs() as u32;
-                        let h = (desc.DesktopCoordinates.bottom - desc.DesktopCoordinates.top).abs() as u32;
+                        let w = (desc.DesktopCoordinates.right - desc.DesktopCoordinates.left).abs()
+                            as u32;
+                        let h = (desc.DesktopCoordinates.bottom - desc.DesktopCoordinates.top).abs()
+                            as u32;
                         if desc.AttachedToDesktop.as_bool() && w > 0 && h > 0 {
                             let raw_name = String::from_utf16_lossy(&desc.DeviceName);
                             let clean_name = raw_name.trim_matches('\0').trim().to_string();
-                            let is_primary = desc.DesktopCoordinates.left == 0 && desc.DesktopCoordinates.top == 0;
+                            let is_primary = desc.DesktopCoordinates.left == 0
+                                && desc.DesktopCoordinates.top == 0;
                             let name = if clean_name.is_empty() {
                                 format!("Display {}", output_idx + 1)
                             } else {

@@ -25,10 +25,26 @@ pub struct VirtualDisplayStatus {
 
 pub fn get_supported_modes() -> Vec<VirtualDisplayMode> {
     vec![
-        VirtualDisplayMode { width: 1920, height: 1080, refresh_rate: 60 },
-        VirtualDisplayMode { width: 1920, height: 1080, refresh_rate: 120 },
-        VirtualDisplayMode { width: 2560, height: 1440, refresh_rate: 60 },
-        VirtualDisplayMode { width: 3840, height: 2160, refresh_rate: 60 },
+        VirtualDisplayMode {
+            width: 1920,
+            height: 1080,
+            refresh_rate: 60,
+        },
+        VirtualDisplayMode {
+            width: 1920,
+            height: 1080,
+            refresh_rate: 120,
+        },
+        VirtualDisplayMode {
+            width: 2560,
+            height: 1440,
+            refresh_rate: 60,
+        },
+        VirtualDisplayMode {
+            width: 3840,
+            height: 2160,
+            refresh_rate: 60,
+        },
     ]
 }
 
@@ -68,9 +84,7 @@ pub fn find_driver_inf() -> Option<PathBuf> {
 pub fn is_driver_installed() -> bool {
     #[cfg(windows)]
     {
-        let output = Command::new("pnputil")
-            .args(&["/enum-drivers"])
-            .output();
+        let output = Command::new("pnputil").args(&["/enum-drivers"]).output();
 
         if let Ok(out) = output {
             let stdout = String::from_utf8_lossy(&out.stdout).to_lowercase();
@@ -94,7 +108,10 @@ pub fn get_status() -> VirtualDisplayStatus {
     let mut virtual_count = 0u32;
     for m in &monitors {
         let name_lower = m.name.to_lowercase();
-        if name_lower.contains("virtual") || name_lower.contains("idd") || name_lower.contains("vrv") {
+        if name_lower.contains("virtual")
+            || name_lower.contains("idd")
+            || name_lower.contains("vrv")
+        {
             virtual_count += 1;
         }
     }
@@ -120,10 +137,14 @@ pub fn install_driver(inf_path: Option<&str>) -> Result<String, String> {
         let target_inf = if let Some(p) = inf_path {
             PathBuf::from(p)
         } else {
-            find_driver_inf().ok_or_else(|| "IddSampleDriver.inf not found in workspace or driver directory".to_string())?
+            find_driver_inf().ok_or_else(|| {
+                "IddSampleDriver.inf not found in workspace or driver directory".to_string()
+            })?
         };
 
-        let inf_str = target_inf.to_str().ok_or_else(|| "Invalid INF path".to_string())?;
+        let inf_str = target_inf
+            .to_str()
+            .ok_or_else(|| "Invalid INF path".to_string())?;
 
         let output = Command::new("pnputil")
             .args(&["/add-driver", inf_str, "/install"])
@@ -134,9 +155,17 @@ pub fn install_driver(inf_path: Option<&str>) -> Result<String, String> {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         if output.status.success() {
-            Ok(format!("Driver package installed successfully: {}", stdout.trim()))
+            Ok(format!(
+                "Driver package installed successfully: {}",
+                stdout.trim()
+            ))
         } else {
-            Err(format!("pnputil failed (exit {}): {} {}", output.status.code().unwrap_or(-1), stdout, stderr))
+            Err(format!(
+                "pnputil failed (exit {}): {} {}",
+                output.status.code().unwrap_or(-1),
+                stdout,
+                stderr
+            ))
         }
     }
     #[cfg(not(windows))]
@@ -161,7 +190,9 @@ pub fn uninstall_driver() -> Result<String, String> {
         let mut current_oem = String::new();
         for line in stdout.lines() {
             let line_trim = line.trim();
-            if line_trim.starts_with("Published Name:") || line_trim.starts_with("Nama yang Dipublikasikan:") {
+            if line_trim.starts_with("Published Name:")
+                || line_trim.starts_with("Nama yang Dipublikasikan:")
+            {
                 if let Some(val) = line_trim.split(':').nth(1) {
                     current_oem = val.trim().to_string();
                 }
@@ -180,7 +211,11 @@ pub fn uninstall_driver() -> Result<String, String> {
                 .map_err(|e| format!("Failed to delete driver: {}", e))?;
 
             let del_stdout = String::from_utf8_lossy(&del_out.stdout);
-            Ok(format!("Uninstalled driver package {}: {}", oem, del_stdout.trim()))
+            Ok(format!(
+                "Uninstalled driver package {}: {}",
+                oem,
+                del_stdout.trim()
+            ))
         } else {
             Ok("No installed VrV Desk virtual display driver found to uninstall".to_string())
         }
