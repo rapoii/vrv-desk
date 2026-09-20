@@ -143,6 +143,88 @@ impl ScreenCapturer {
             Ok(buffer.into_inner())
         }
     }
+
+    /// Capture raw BGRA pixel buffer directly from screen
+    pub fn capture_raw_bgra(&self) -> Result<(u32, u32, Vec<u8>), String> {
+        #[cfg(windows)]
+        unsafe {
+            let hwnd = HWND(0);
+            let hdc_screen = GetDC(hwnd);
+            if hdc_screen.0 == 0 {
+                return Err("GetDC failed".to_string());
+            }
+
+            let hdc_mem = CreateCompatibleDC(hdc_screen);
+            if hdc_mem.0 == 0 {
+                ReleaseDC(hwnd, hdc_screen);
+                return Err("CreateCompatibleDC failed".to_string());
+            }
+
+            let w = self.screen_width;
+            let h = self.screen_height;
+            let hbm = CreateCompatibleBitmap(hdc_screen, w, h);
+            if hbm.0 == 0 {
+                DeleteDC(hdc_mem);
+                ReleaseDC(hwnd, hdc_screen);
+                return Err("CreateCompatibleBitmap failed".to_string());
+            }
+
+            let old_bm = SelectObject(hdc_mem, hbm);
+            let blt_res = BitBlt(hdc_mem, 0, 0, w, h, hdc_screen, 0, 0, SRCCOPY);
+
+            if let Err(e) = blt_res {
+                SelectObject(hdc_mem, old_bm);
+                DeleteObject(hbm);
+                DeleteDC(hdc_mem);
+                ReleaseDC(hwnd, hdc_screen);
+                return Err(format!("BitBlt failed: {:?}", e));
+            }
+
+            let mut bi = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: w,
+                    biHeight: -h, // Top-down
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    biSizeImage: 0,
+                    biXPelsPerMeter: 0,
+                    biYPelsPerMeter: 0,
+                    biClrUsed: 0,
+                    biClrImportant: 0,
+                },
+                bmiColors: [RGBQUAD::default()],
+            };
+
+            let mut raw_pixels = vec![0u8; (w * h * 4) as usize];
+            let lines = GetDIBits(
+                hdc_mem,
+                hbm,
+                0,
+                h as u32,
+                Some(raw_pixels.as_mut_ptr() as *mut _),
+                &mut bi,
+                DIB_RGB_COLORS,
+            );
+
+            SelectObject(hdc_mem, old_bm);
+            DeleteObject(hbm);
+            DeleteDC(hdc_mem);
+            ReleaseDC(hwnd, hdc_screen);
+
+            if lines == 0 {
+                return Err("GetDIBits failed".to_string());
+            }
+
+            Ok((w as u32, h as u32, raw_pixels))
+        }
+
+        #[cfg(not(windows))]
+        {
+            Err("GDI is only supported on Windows".to_string())
+        }
+    }
 }
 
 #[cfg(not(windows))]

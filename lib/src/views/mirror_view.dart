@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/audio_stream_player.dart';
+import '../services/video_stream_player.dart';
 import '../widgets/pin_dialog.dart';
 import '../widgets/shortcut_bar.dart';
 
@@ -44,6 +45,7 @@ class _MirrorViewState extends State<MirrorView> {
   bool _hasSentInitialPin = false;
   String _statusMessage = 'Connecting...';
   int _frameCount = 0;
+  String _videoCodecName = 'Detecting...';
   BuildContext? _dialogContext;
 
   final TextEditingController _textController = TextEditingController();
@@ -51,13 +53,44 @@ class _MirrorViewState extends State<MirrorView> {
   bool _showShortcuts = false;
 
   late final AudioStreamPlayer _audioPlayer;
+  late final VideoStreamPlayer _videoPlayer;
+  int? _textureId;
+  bool _isVideoDecoderInitialized = false;
   bool _isAudioMuted = false;
 
   @override
   void initState() {
     super.initState();
     _audioPlayer = widget.audioPlayer ?? AudioStreamPlayer();
+    _videoPlayer = VideoStreamPlayer();
     _connect();
+  }
+
+  Future<void> _handleVh24Packet(List<int> data) async {
+    final packet = VideoStreamPlayer.parseVh24Packet(data);
+    if (packet == null) return;
+
+    if (!_isVideoDecoderInitialized) {
+      _isVideoDecoderInitialized = true;
+      final id = await _videoPlayer.init(width: 1280, height: 720);
+      if (mounted) {
+        setState(() {
+          _textureId = id;
+          _videoCodecName = id != null ? 'H.264 (HW)' : 'JPEG';
+        });
+      }
+    }
+
+    if (_textureId != null) {
+      await _videoPlayer.write(packet.nalPayload);
+      if (mounted) {
+        setState(() {
+          _isConnected = true;
+          _frameCount++;
+          _videoCodecName = 'H.264 (HW)';
+        });
+      }
+    }
   }
 
   Future<void> _connect() async {
@@ -111,11 +144,16 @@ class _MirrorViewState extends State<MirrorView> {
               if (_isAuthenticated) {
                 _audioPlayer.handleVaudPacket(data);
               }
+            } else if (VideoStreamPlayer.isVh24Packet(data)) {
+              if (_isAuthenticated) {
+                _handleVh24Packet(data);
+              }
             } else {
               setState(() {
                 _isConnected = true;
                 _currentFrame = Uint8List.fromList(data);
                 _frameCount++;
+                _videoCodecName = 'JPEG';
               });
             }
           } else if (data is String) {
@@ -424,6 +462,7 @@ class _MirrorViewState extends State<MirrorView> {
   void dispose() {
     _socket?.close();
     _audioPlayer.stop();
+    _videoPlayer.dispose();
     _textController.dispose();
     _keyboardFocusNode.dispose();
     super.dispose();
@@ -438,7 +477,7 @@ class _MirrorViewState extends State<MirrorView> {
           children: [
             // Video Canvas & Interactive Touch Layer
             Positioned.fill(
-              child: _isAuthenticated && _currentFrame != null
+              child: _isAuthenticated && (_textureId != null || _currentFrame != null)
                   ? LayoutBuilder(
                       builder: (context, constraints) {
                         final size = Size(constraints.maxWidth, constraints.maxHeight);
@@ -455,11 +494,13 @@ class _MirrorViewState extends State<MirrorView> {
                             _handlePointerEvent(event.localPosition, size, 'mouse_up');
                           },
                           child: Center(
-                            child: Image.memory(
-                              _currentFrame!,
-                              gaplessPlayback: true,
-                              fit: BoxFit.contain,
-                            ),
+                            child: _textureId != null
+                                ? Texture(textureId: _textureId!)
+                                : Image.memory(
+                                    _currentFrame!,
+                                    gaplessPlayback: true,
+                                    fit: BoxFit.contain,
+                                  ),
                           ),
                         );
                       },

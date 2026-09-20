@@ -333,20 +333,37 @@ where
     let screen_w = capturer.screen_width();
     let screen_h = capturer.screen_height();
 
+    let mut h264_encoder = match mirror_core::video::H264VideoEncoder::new(screen_w, screen_h, 2_500_000, 60.0) {
+        Ok(enc) => {
+            println!("🚀 Video compression engine: H.264 ScreenContentRealTime (VH24 protocol, target 2.5 Mbps @ 60 FPS)");
+            Some(enc)
+        }
+        Err(e) => {
+            println!("⚠️ H.264 video encoder init failed ({}), falling back to JPEG frames", e);
+            None
+        }
+    };
+
     let ws_sender = std::sync::Arc::new(tokio::sync::Mutex::new(ws_sender));
     let is_running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
 
     let is_running_frame = is_running.clone();
     let ws_sender_frame = ws_sender.clone();
-    // 1. Task: Stream JPEG frames at target ~60 FPS with smart delta capture
+    // 1. Task: Stream H.264 / JPEG frames at target ~60 FPS with smart delta capture
     let frame_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(16));
         while is_running_frame.load(std::sync::atomic::Ordering::Relaxed) {
             interval.tick().await;
-            match capturer.capture_jpeg(10, 60, 1024) {
-                Ok(Some(jpeg_bytes)) => {
+            let frame_res = if let Some(ref mut enc) = h264_encoder {
+                capturer.capture_h264(10, enc)
+            } else {
+                capturer.capture_jpeg(10, 60, 1024)
+            };
+
+            match frame_res {
+                Ok(Some(frame_bytes)) => {
                     let mut sender = ws_sender_frame.lock().await;
-                    if sender.send(Message::Binary(jpeg_bytes.into())).await.is_err() {
+                    if sender.send(Message::Binary(frame_bytes.into())).await.is_err() {
                         is_running_frame.store(false, std::sync::atomic::Ordering::Relaxed);
                         break;
                     }

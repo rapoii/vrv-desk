@@ -6,20 +6,27 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Build
 import android.util.Log
+import android.view.Surface
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.view.TextureRegistry
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private val channelName = "com.vrv.desk/audio"
+    private val videoChannelName = "com.vrv.desk/video"
     private var audioTrack: AudioTrack? = null
     private var opusDecoder: OpusAudioDecoder? = null
+    private var videoTextureEntry: TextureRegistry.SurfaceTextureEntry? = null
+    private var videoSurface: Surface? = null
+    private var h264Decoder: H264VideoDecoder? = null
     private var isMuted: Boolean = false
     private var currentSampleRate: Int = 0
     private var currentChannels: Int = 0
     private val audioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val videoExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private var totalChunksWritten: Long = 0
     private var nonZeroChunksWritten: Long = 0
     private var peakAmplitude: Int = 0
@@ -71,6 +78,70 @@ class MainActivity : FlutterActivity() {
                     result.notImplemented()
                 }
             }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, videoChannelName).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "init" -> {
+                    val width = call.argument<Int>("width") ?: 1280
+                    val height = call.argument<Int>("height") ?: 720
+                    try {
+                        disposeVideo()
+                        val textureEntry = flutterEngine.renderer.createSurfaceTexture()
+                        val surfaceTexture = textureEntry.surfaceTexture()
+                        surfaceTexture.setDefaultBufferSize(width, height)
+                        val surface = Surface(surfaceTexture)
+
+                        val decoder = H264VideoDecoder(surface)
+                        val ok = decoder.init(width, height)
+                        if (ok) {
+                            videoTextureEntry = textureEntry
+                            videoSurface = surface
+                            h264Decoder = decoder
+                            result.success(textureEntry.id())
+                        } else {
+                            surface.release()
+                            textureEntry.release()
+                            result.error("INIT_FAILED", "Failed to init MediaCodec H.264 decoder", null)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error setting up video texture: ${e.message}", e)
+                        result.error("EXCEPTION", e.message, null)
+                    }
+                }
+                "write" -> {
+                    val data = call.argument<ByteArray>("data")
+                    if (data != null) {
+                        videoExecutor.execute {
+                            h264Decoder?.decode(data)
+                        }
+                        result.success(true)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "Video NAL data is null", null)
+                    }
+                }
+                "dispose" -> {
+                    disposeVideo()
+                    result.success(true)
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+    }
+
+    @Synchronized
+    private fun disposeVideo() {
+        try {
+            h264Decoder?.release()
+            h264Decoder = null
+            videoSurface?.release()
+            videoSurface = null
+            videoTextureEntry?.release()
+            videoTextureEntry = null
+        } catch (e: Exception) {
+            Log.w(TAG, "Error disposing video pipeline: ${e.message}")
         }
     }
 
@@ -241,7 +312,9 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         stopAudioTrack()
+        disposeVideo()
         audioExecutor.shutdown()
+        videoExecutor.shutdown()
         super.onDestroy()
     }
 }

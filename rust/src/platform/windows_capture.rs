@@ -300,6 +300,93 @@ impl DxgiCapturer {
             Ok(Some(buffer.into_inner()))
         }
     }
+
+    /// Acquire the next frame from GPU and return raw BGRA buffer directly.
+    /// Returns Ok(None) if timeout elapsed without screen update (DXGI_ERROR_WAIT_TIMEOUT).
+    pub fn capture_raw_bgra(
+        &mut self,
+        timeout_ms: u32,
+    ) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
+        unsafe {
+            let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
+            let mut desktop_resource: Option<IDXGIResource> = None;
+
+            let hr = self.duplication.AcquireNextFrame(
+                timeout_ms,
+                &mut frame_info,
+                &mut desktop_resource,
+            );
+
+            if let Err(e) = hr {
+                if e.code() == DXGI_ERROR_WAIT_TIMEOUT {
+                    return Ok(None);
+                }
+                if e.code() == DXGI_ERROR_ACCESS_LOST {
+                    eprintln!("⚠️ DXGI Output Duplication access lost, reinitializing...");
+                    self.reinitialize()?;
+                    return Ok(None);
+                }
+                return Err(format!("AcquireNextFrame failed: {:?}", e));
+            }
+
+            let desktop_resource = match desktop_resource {
+                Some(r) => r,
+                None => {
+                    let _ = self.duplication.ReleaseFrame();
+                    return Ok(None);
+                }
+            };
+
+            let gpu_texture: ID3D11Texture2D = match desktop_resource.cast() {
+                Ok(t) => t,
+                Err(e) => {
+                    let _ = self.duplication.ReleaseFrame();
+                    return Err(format!(
+                        "Failed to cast IDXGIResource to ID3D11Texture2D: {:?}",
+                        e
+                    ));
+                }
+            };
+
+            // Copy GPU desktop texture to CPU-readable staging texture
+            self.context
+                .CopyResource(&self.staging_texture, &gpu_texture);
+
+            // Map staging texture for CPU read
+            let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+            let map_res = self.context.Map(
+                &self.staging_texture,
+                0,
+                D3D11_MAP_READ,
+                0,
+                Some(&mut mapped),
+            );
+
+            if let Err(e) = map_res {
+                let _ = self.duplication.ReleaseFrame();
+                return Err(format!("Map staging texture failed: {:?}", e));
+            }
+
+            let width = self.screen_width;
+            let height = self.screen_height;
+            let row_pitch = mapped.RowPitch as usize;
+            let src_slice =
+                std::slice::from_raw_parts(mapped.pData as *const u8, row_pitch * height as usize);
+
+            let mut raw_pixels = vec![0u8; (width * height * 4) as usize];
+            for y in 0..height as usize {
+                let src_row = &src_slice[y * row_pitch..(y * row_pitch + (width as usize * 4))];
+                let dst_row =
+                    &mut raw_pixels[y * (width as usize * 4)..(y + 1) * (width as usize * 4)];
+                dst_row.copy_from_slice(src_row);
+            }
+
+            self.context.Unmap(&self.staging_texture, 0);
+            let _ = self.duplication.ReleaseFrame();
+
+            Ok(Some((width, height, raw_pixels)))
+        }
+    }
 }
 
 #[cfg(not(windows))]
@@ -429,5 +516,53 @@ impl HybridScreenCapturer {
         let jpeg = gdi.capture_jpeg(quality, target_width)?;
         self.gdi = Some(gdi);
         Ok(Some(jpeg))
+    }
+
+    /// Capture frame from GPU/GDI and encode with H.264 real-time compression (VH24 packet)
+    pub fn capture_h264(
+        &mut self,
+        timeout_ms: u32,
+        encoder: &mut crate::video::H264VideoEncoder,
+    ) -> Result<Option<Vec<u8>>, String> {
+        #[cfg(windows)]
+        {
+            if self.is_dxgi {
+                if let Some(ref mut dxgi) = self.dxgi {
+                    match dxgi.capture_raw_bgra(timeout_ms) {
+                        Ok(Some((w, h, bgra))) => {
+                            let packet = encoder.encode_bgra(w, h, &bgra)?;
+                            return Ok(Some(packet));
+                        }
+                        Ok(None) => return Ok(None),
+                        Err(e) => {
+                            eprintln!("⚠️ DXGI capture error: {}, falling back to GDI engine", e);
+                            self.is_dxgi = false;
+                            self.dxgi = None;
+                            let gdi = crate::gdi_capture::ScreenCapturer::new()?;
+                            self.gdi = Some(gdi);
+                        }
+                    }
+                }
+            }
+
+            if let Some(ref gdi) = self.gdi {
+                let (w, h, bgra) = gdi.capture_raw_bgra()?;
+                let packet = encoder.encode_bgra(w, h, &bgra)?;
+                return Ok(Some(packet));
+            }
+
+            let gdi = crate::gdi_capture::ScreenCapturer::new()?;
+            let (w, h, bgra) = gdi.capture_raw_bgra()?;
+            let packet = encoder.encode_bgra(w, h, &bgra)?;
+            self.gdi = Some(gdi);
+            Ok(Some(packet))
+        }
+
+        #[cfg(not(windows))]
+        {
+            let _ = timeout_ms;
+            let _ = encoder;
+            Err("Screen capture only supported on Windows".to_string())
+        }
     }
 }
