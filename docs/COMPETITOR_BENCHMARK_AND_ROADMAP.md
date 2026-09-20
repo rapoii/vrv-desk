@@ -24,7 +24,7 @@
 | **System Shortcuts (Ctrl+Alt+Del)**| ✅ **Ada (SAS Dynamic Injection)** | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Terbatas |
 | **In-Session Chat & Whiteboard** | ❌ *Belum Ada* | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Tidak Ada |
 | **Session Recording** | ❌ *Belum Ada* | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Tidak Ada |
-| **Web Client (Browser Remote)** | ❌ *Belum Ada* | ✅ Ada (WASM/WebRTC) | ✅ Ada (go.anydesk.com) | ✅ Ada (Web Client) | ✅ Ada (WebRTC) |
+| **Web Client (Browser Remote)** | 🛡️ **Wajib Aplikasi Native (Security & Low-Latency Policy)** | ✅ Ada (WASM/WebRTC) | ✅ Ada (go.anydesk.com) | ✅ Ada (Web Client) | ✅ Ada (WebRTC) |
 | **Remote Audio Android Host** | ✅ **Internal Audio 48kHz** | ❌ Bisu (Hanya Mic) | ❌ Bisu (Hanya Mic) | ❌ Bisu (Hanya Mic) | ❌ Client Saja |
 | **Ukuran Installer Windows** | ✅ **~16 MB (Standalone)**| ~25 - 35 MB | ~5 MB (Zero-install) | ~50 - 90 MB | ~40 MB |
 | **Konsumsi RAM Idle Host** | ✅ **~14 MB** | ~45 - 70 MB | ~35 - 50 MB | ~150 - 300 MB | ~60 - 90 MB |
@@ -124,6 +124,9 @@
 - [x] WebSocket RPC `get_virtual_display_status`, `install_virtual_display`, `uninstall_virtual_display` dengan Named Pipe IPC bridge ke `vrv_service.exe` SYSTEM daemon.
 - [x] Seluruh 156/156 pengujian (73 Rust + 83 Flutter) lulus 100% dan terverifikasi live E2E via `test_e2e_virtual_display.py`.
 
-### Phase 26: Web Client (Browser-based remote control via WebRTC/WASM)
-- [ ] Implementasikan WebRTC/WebSocket streaming gateway yang dapat diakses langsung via web browser modern.
-- [ ] Antarmuka kontrol keyboard & mouse virtual berbasis HTML5 Canvas.
+### Phase 26: Architectural Policy — Native Client Only (Web Client Ditiadakan) - [x] **Finalized Policy**
+- [x] **Keputusan Desain & Keamanan:** Web client browser ditiadakan secara sengaja. Seluruh sesi remote diwajibkan melalui aplikasi native (Android APK & Windows PC Desktop).
+- [x] **Alasan Teknis & Keunggulan:**
+  1. *Keamanan Maksimal:* Menghilangkan risiko serangan browser-based XSS, sandbox escape, dan sniffing WebRTC pada public browser.
+  2. *Akses Input Level Sistem Tanpa Halangan:* Browser membatasi intercept tombol sistem penting (`Alt+Tab`, `Win+L`, `Ctrl+Alt+Del`, global key combinations, right-click context menu lock, dan pointer capture).
+  3. *Ultra Low Latency & Efisiensi Hardware:* Aplikasi native mendukung pipeline decoding hardware langsung (MediaCodec H.264 di Android, DirectX 11 / DXGI di Windows) dan zero-copy rendering tanpa overhead browser runtime.

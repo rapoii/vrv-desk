@@ -1138,4 +1138,7 @@ Rincian spesifikasi teknis dan audit riset pasar terhadap RustDesk, AnyDesk, dan
   - [x] WebSocket RPC integration (`get_virtual_display_status`, `install_virtual_display`, `uninstall_virtual_display`) dan Named Pipe IPC service handoff
   - [x] Status indikator virtual display pada native PC GUI (`vrv_desk.exe`) dan remote status toast pada mobile viewer (`mirror_view.dart`)
   - [x] Unit tests komprehensif (`rust/tests/virtual_display_test.rs`) dan skrip live E2E integration test (`test_e2e_virtual_display.py`) dengan total 156/156 tests passing (73 Rust + 83 Flutter)
-- [ ] **Phase 26: Web Client (Browser-based remote control via WebRTC/WASM)**
+- [x] **Phase 26: Architectural Policy — Native Client Only (Web Client Ditiadakan) - Completed & Verified**
+  - [x] Keputusan arsitektur resmi: Web client ditiadakan demi menjamin privasi absolut, keamanan sandboxing, dan zero-latency rendering.
+  - [x] Sesi remote diwajibkan 100% menggunakan aplikasi native (Flutter Android APK & Windows PC Desktop GUI/Service).
+  - [x] Akses penuh tombol sistem (`Ctrl+Alt+Del`, `Win+L`, `Alt+Tab`) dan pipeline hardware decoding langsung (MediaCodec H.264 & DirectX 11) tanpa batasan browser.
