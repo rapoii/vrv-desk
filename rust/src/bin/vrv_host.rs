@@ -369,16 +369,21 @@ where
     // 1. Task: Stream H.264 / JPEG frames at target ~60 FPS with smart delta capture
     let frame_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(16));
+        let mut sent_count = 0u64;
+        let mut skipped_count = 0u64;
+        let mut last_log = tokio::time::Instant::now();
+
         while is_running_frame.load(std::sync::atomic::Ordering::Relaxed) {
             interval.tick().await;
             let frame_res = if let Some(ref mut enc) = h264_encoder {
-                capturer.capture_h264(10, enc)
+                capturer.capture_h264_with_dirty(10, enc).map(|opt| opt.map(|(bytes, _dirty)| bytes))
             } else {
                 capturer.capture_jpeg(10, 60, 1024)
             };
 
             match frame_res {
                 Ok(Some(frame_bytes)) => {
+                    sent_count += 1;
                     let out_bytes = if let Some(ref mut sec) = e2ee_frame_session {
                         match sec.encrypt(&frame_bytes) {
                             Ok(enc) => enc,
@@ -395,11 +400,24 @@ where
                 }
                 Ok(None) => {
                     // Frame unchanged (static screen), skip send to conserve CPU & bandwidth
+                    skipped_count += 1;
                 }
                 Err(e) => {
                     eprintln!("Capture error: {}", e);
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
+            }
+
+            if last_log.elapsed() >= Duration::from_secs(5) {
+                let total = sent_count + skipped_count;
+                if total > 0 {
+                    let savings = (skipped_count as f64 / total as f64) * 100.0;
+                    println!(
+                        "📊 Video Stream: {} sent, {} skipped static frames (Dirty Region savings: {:.1}%)",
+                        sent_count, skipped_count, savings
+                    );
+                }
+                last_log = tokio::time::Instant::now();
             }
         }
     });

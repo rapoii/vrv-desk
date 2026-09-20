@@ -47,6 +47,7 @@ target/
 Cargo.lock
 *.apk
 *.zip
+*.exe
 dist/
 emulator_*.png
 test_e2e_stream.py
