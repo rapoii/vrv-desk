@@ -10,6 +10,7 @@ pub mod video;
 pub mod mft_encoder;
 pub mod auth;
 pub mod stun;
+pub mod dirty_rect;
 
 pub use platform::windows_capture::{DxgiCapturer, HybridScreenCapturer};
 
