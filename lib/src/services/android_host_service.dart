@@ -34,12 +34,15 @@ class AndroidHostService {
   static const String captureStreamChannelName = 'com.vrv.desk/capture_stream';
   static const String accessibilityChannelName = 'com.vrv.desk/accessibility';
   static const String captureChannelName = 'com.vrv.desk/capture';
+  static const String adbBridgeChannelName = 'com.vrv.desk/adb_bridge';
 
   final MethodChannel _accessibilityChannel;
   final MethodChannel _captureChannel;
+  final MethodChannel _adbBridgeChannel;
   final EventChannel? _captureStreamChannel;
   final Stream<Uint8List>? _videoStreamOverride;
 
+  bool useAdbInputBridge;
   double screenWidth;
   double screenHeight;
 
@@ -60,13 +63,16 @@ class AndroidHostService {
   AndroidHostService({
     MethodChannel? accessibilityChannel,
     MethodChannel? captureChannel,
+    MethodChannel? adbBridgeChannel,
     EventChannel? captureStreamChannel,
     Stream<Uint8List>? videoStreamOverride,
     this.screenWidth = 1080.0,
     this.screenHeight = 2400.0,
+    this.useAdbInputBridge = false,
   })  : _accessibilityChannel =
             accessibilityChannel ?? const MethodChannel(accessibilityChannelName),
         _captureChannel = captureChannel ?? const MethodChannel(captureChannelName),
+        _adbBridgeChannel = adbBridgeChannel ?? const MethodChannel(adbBridgeChannelName),
         _captureStreamChannel =
             captureStreamChannel ?? (videoStreamOverride == null ? const EventChannel(captureStreamChannelName) : null),
         _videoStreamOverride = videoStreamOverride;
@@ -298,11 +304,16 @@ class AndroidHostService {
       case 'touch_tap':
       case 'tap':
       case 'mouse_down':
+      case 'touch_down':
         final normX = (json['x'] as num?)?.toDouble() ?? 0.0;
         final normY = (json['y'] as num?)?.toDouble() ?? 0.0;
         final px = (normX * screenWidth).clamp(0.0, screenWidth);
         final py = (normY * screenHeight).clamp(0.0, screenHeight);
-        _accessibilityChannel.invokeMethod('tap', {'x': px, 'y': py});
+        if (useAdbInputBridge) {
+          _adbBridgeChannel.invokeMethod('tap', {'x': px, 'y': py});
+        } else {
+          _accessibilityChannel.invokeMethod('tap', {'x': px, 'y': py});
+        }
         break;
 
       case 'swipe':
@@ -317,26 +328,58 @@ class AndroidHostService {
         final px2 = (normX2 * screenWidth).clamp(0.0, screenWidth);
         final py2 = (normY2 * screenHeight).clamp(0.0, screenHeight);
 
-        _accessibilityChannel.invokeMethod('swipe', {
-          'x1': px1,
-          'y1': py1,
-          'x2': px2,
-          'y2': py2,
-          'duration': duration,
-        });
+        if (useAdbInputBridge) {
+          _adbBridgeChannel.invokeMethod('swipe', {
+            'x1': px1,
+            'y1': py1,
+            'x2': px2,
+            'y2': py2,
+            'duration': duration,
+          });
+        } else {
+          _accessibilityChannel.invokeMethod('swipe', {
+            'x1': px1,
+            'y1': py1,
+            'x2': px2,
+            'y2': py2,
+            'duration': duration,
+          });
+        }
         break;
 
       case 'shortcut':
         final action = json['name']?.toString() ?? json['action']?.toString() ?? '';
         if (action.isNotEmpty) {
-          _accessibilityChannel.invokeMethod('globalAction', {'action': action});
+          if (useAdbInputBridge) {
+            _adbBridgeChannel.invokeMethod('globalAction', {'action': action});
+          } else {
+            _accessibilityChannel.invokeMethod('globalAction', {'action': action});
+          }
         }
         break;
 
       case 'back':
       case 'home':
       case 'recents':
-        _accessibilityChannel.invokeMethod('globalAction', {'action': type});
+        if (useAdbInputBridge) {
+          _adbBridgeChannel.invokeMethod('globalAction', {'action': type});
+        } else {
+          _accessibilityChannel.invokeMethod('globalAction', {'action': type});
+        }
+        break;
+
+      case 'key':
+        final keyCode = (json['keyCode'] as num?)?.toInt() ?? 0;
+        if (keyCode != 0) {
+          _adbBridgeChannel.invokeMethod('keyevent', {'keyCode': keyCode});
+        }
+        break;
+
+      case 'text':
+        final text = json['text']?.toString() ?? '';
+        if (text.isNotEmpty) {
+          _adbBridgeChannel.invokeMethod('text', {'text': text});
+        }
         break;
 
       default:
@@ -508,6 +551,37 @@ class AndroidHostService {
       return res ?? false;
     } catch (_) {
       return false;
+    }
+  }
+
+  // High-Performance ADB Bridge APIs
+
+  Future<Map<String, dynamic>?> getAdbStatus() async {
+    try {
+      final res = await _adbBridgeChannel.invokeMethod<Map<dynamic, dynamic>>('getAdbStatus');
+      if (res == null) return null;
+      return res.map((k, v) => MapEntry(k.toString(), v));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> isAdbHighPerformanceAvailable() async {
+    try {
+      final status = await getAdbStatus();
+      return status?['high_performance_available'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<double> getMaxDisplayRefreshRate() async {
+    try {
+      final status = await getAdbStatus();
+      final rate = (status?['max_refresh_rate'] as num?)?.toDouble();
+      return rate ?? 60.0;
+    } catch (_) {
+      return 60.0;
     }
   }
 }

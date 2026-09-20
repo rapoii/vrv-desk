@@ -14,12 +14,15 @@ void main() {
 
   const accessibilityChannelName = 'com.vrv.desk/accessibility';
   const captureChannelName = 'com.vrv.desk/capture';
+  const adbBridgeChannelName = 'com.vrv.desk/adb_bridge';
   final accessibilityCalls = <MethodCall>[];
   final captureCalls = <MethodCall>[];
+  final adbBridgeCalls = <MethodCall>[];
 
   setUp(() {
     accessibilityCalls.clear();
     captureCalls.clear();
+    adbBridgeCalls.clear();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
       const MethodChannel(accessibilityChannelName),
@@ -61,6 +64,32 @@ void main() {
         }
       },
     );
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel(adbBridgeChannelName),
+      (MethodCall methodCall) async {
+        adbBridgeCalls.add(methodCall);
+        switch (methodCall.method) {
+          case 'getAdbStatus':
+            return {
+              'adb_enabled': true,
+              'port_5555_open': true,
+              'max_refresh_rate': 120.0,
+              'shell_ready': true,
+              'high_performance_available': true,
+            };
+          case 'tap':
+          case 'swipe':
+          case 'globalAction':
+          case 'keyevent':
+          case 'text':
+            return true;
+          default:
+            return null;
+        }
+      },
+    );
   });
 
   tearDown(() {
@@ -72,6 +101,11 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
       const MethodChannel(captureChannelName),
+      null,
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel(adbBridgeChannelName),
       null,
     );
   });
@@ -468,6 +502,95 @@ void main() {
       expect(receivedFrames[1][6] | (receivedFrames[1][7] << 8), equals(48000));
 
       await sub.cancel();
+      await ws.close();
+    });
+
+    test('ADB Bridge API: queries getAdbStatus and detects high refresh rate capability', () async {
+      final status = await hostService.getAdbStatus();
+      expect(status, isNotNull);
+      expect(status!['high_performance_available'], isTrue);
+      expect(status['max_refresh_rate'], equals(120.0));
+
+      final isHighPerf = await hostService.isAdbHighPerformanceAvailable();
+      expect(isHighPerf, isTrue);
+
+      final refreshRate = await hostService.getMaxDisplayRefreshRate();
+      expect(refreshRate, equals(120.0));
+    });
+
+    test('Dual Input Routing: routes touch and swipe through AdbInputBridge when enabled', () async {
+      hostService.useAdbInputBridge = true;
+
+      await hostService.start(
+        bindAddress: InternetAddress.loopbackIPv4,
+        port: 0,
+        pin: '123456',
+        enableUdpBeacon: false,
+      );
+
+      final ws = await WebSocket.connect('ws://127.0.0.1:${hostService.port}');
+      final msgCompleter = Completer<String>();
+      late E2eeTransportSession clientE2ee;
+
+      ws.listen((data) {
+        if (data is String) {
+          final json = jsonDecode(data);
+          if (json['type'] == 'auth_required') {
+            ws.add(jsonEncode({'type': 'auth_verify', 'pin': '123456', 'e2ee': true}));
+          } else if (json['type'] == 'auth_ok') {
+            clientE2ee = E2eeTransportSession.fromToken(json['session_token']);
+            msgCompleter.complete('auth_ok');
+          }
+        }
+      });
+
+      await msgCompleter.future.timeout(const Duration(seconds: 2));
+
+      // Send touch_down through ADB bridge
+      final touchPayload = jsonEncode({'type': 'touch_down', 'x': 0.5, 'y': 0.5});
+      final encTouch = await clientE2ee.encrypt(Uint8List.fromList(utf8.encode(touchPayload)));
+      ws.add(encTouch);
+
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      expect(adbBridgeCalls.any((c) => c.method == 'tap'), isTrue);
+      final tapCall = adbBridgeCalls.firstWhere((c) => c.method == 'tap');
+      expect((tapCall.arguments['x'] as num).toDouble(), closeTo(540.0, 1.0));
+      expect((tapCall.arguments['y'] as num).toDouble(), closeTo(1200.0, 1.0));
+
+      // Send swipe through ADB bridge
+      final swipePayload = jsonEncode({
+        'type': 'swipe',
+        'x1': 0.2,
+        'y1': 0.8,
+        'x2': 0.2,
+        'y2': 0.2,
+        'duration': 150,
+      });
+      final encSwipe = await clientE2ee.encrypt(Uint8List.fromList(utf8.encode(swipePayload)));
+      ws.add(encSwipe);
+
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      expect(adbBridgeCalls.any((c) => c.method == 'swipe'), isTrue);
+      final swipeCall = adbBridgeCalls.firstWhere((c) => c.method == 'swipe');
+      expect((swipeCall.arguments['x1'] as num).toDouble(), closeTo(216.0, 1.0));
+      expect((swipeCall.arguments['y1'] as num).toDouble(), closeTo(1920.0, 1.0));
+      expect((swipeCall.arguments['x2'] as num).toDouble(), closeTo(216.0, 1.0));
+      expect((swipeCall.arguments['y2'] as num).toDouble(), closeTo(480.0, 1.0));
+      expect(swipeCall.arguments['duration'], equals(150));
+
+      // Send shortcut through ADB bridge
+      final shortcutPayload = jsonEncode({'type': 'shortcut', 'action': 'home'});
+      final encShortcut = await clientE2ee.encrypt(Uint8List.fromList(utf8.encode(shortcutPayload)));
+      ws.add(encShortcut);
+
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      expect(adbBridgeCalls.any((c) => c.method == 'globalAction'), isTrue);
+      final globalCall = adbBridgeCalls.firstWhere((c) => c.method == 'globalAction');
+      expect(globalCall.arguments['action'], equals('home'));
+
       await ws.close();
     });
   });

@@ -24,10 +24,23 @@ class FakeAndroidHostService extends AndroidHostService {
     String initialPin = '654321',
     bool initialAccessibility = true,
     bool initialAudioSupported = true,
+    bool initialAdbAvailable = false,
+    double initialRefreshRate = 60.0,
   })  : _mockRunning = initialRunning,
         _mockPin = initialPin,
         _mockAccessibility = initialAccessibility,
-        _mockAudioSupported = initialAudioSupported;
+        _mockAudioSupported = initialAudioSupported,
+        _mockAdbAvailable = initialAdbAvailable,
+        _mockRefreshRate = initialRefreshRate;
+
+  bool _mockAdbAvailable = false;
+  double _mockRefreshRate = 60.0;
+
+  @override
+  Future<bool> isAdbHighPerformanceAvailable() async => _mockAdbAvailable;
+
+  @override
+  Future<double> getMaxDisplayRefreshRate() async => _mockRefreshRate;
 
   @override
   bool get isRunning => _mockRunning;
@@ -279,6 +292,39 @@ void main() {
 
       expect(find.byKey(const Key('audio_active_badge')), findsOneWidget);
       expect(find.textContaining('Internal Audio (48kHz Stereo) Supported'), findsOneWidget);
+    });
+
+    testWidgets('renders ADB High-Performance card and toggles ADB mode when available', (tester) async {
+      final fakeService = FakeAndroidHostService(
+        initialRunning: false,
+        initialAdbAvailable: true,
+        initialRefreshRate: 120.0,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: HostModeDialog(
+              hostService: fakeService,
+              deviceId: '123456',
+              enableMetricsTimer: false,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const Key('adb_high_perf_card')), findsOneWidget);
+      expect(find.textContaining('High-Performance ADB Mode (120Hz)'), findsOneWidget);
+
+      final adbSwitch = find.byKey(const Key('adb_mode_switch'));
+      expect(adbSwitch, findsOneWidget);
+      expect(fakeService.useAdbInputBridge, isTrue);
+
+      // Toggle switch off
+      await tester.tap(adbSwitch);
+      await tester.pump();
+      expect(fakeService.useAdbInputBridge, isFalse);
     });
   });
 

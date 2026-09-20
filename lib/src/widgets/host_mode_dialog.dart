@@ -31,6 +31,9 @@ class _HostModeDialogState extends State<HostModeDialog> {
   late final AndroidHostService _hostService;
   bool _isAccessibilityEnabled = true;
   bool _isAudioSupported = true;
+  bool _isAdbAvailable = false;
+  double _maxRefreshRate = 60.0;
+  bool _useAdbMode = false;
   bool _isStartingOrStopping = false;
   Timer? _metricsTimer;
 
@@ -40,6 +43,7 @@ class _HostModeDialogState extends State<HostModeDialog> {
     _hostService = widget.hostService ?? AndroidHostService();
     _checkAccessibility();
     _checkAudioSupport();
+    _checkAdbStatus();
     _startMetricsTimer();
   }
 
@@ -76,6 +80,21 @@ class _HostModeDialogState extends State<HostModeDialog> {
     }
   }
 
+  Future<void> _checkAdbStatus() async {
+    final available = await _hostService.isAdbHighPerformanceAvailable();
+    final refreshRate = await _hostService.getMaxDisplayRefreshRate();
+    if (mounted) {
+      setState(() {
+        _isAdbAvailable = available;
+        _maxRefreshRate = refreshRate;
+        if (available) {
+          _useAdbMode = true;
+          _hostService.useAdbInputBridge = true;
+        }
+      });
+    }
+  }
+
   Future<void> _openAccessibilitySettings() async {
     await _hostService.openAccessibilitySettings();
     if (mounted) {
@@ -100,7 +119,8 @@ class _HostModeDialogState extends State<HostModeDialog> {
           deviceId: widget.deviceId,
           deviceName: widget.deviceName,
         );
-        await _hostService.startCapture();
+        final targetFps = _useAdbMode ? _maxRefreshRate.toInt().clamp(30, 120) : 30;
+        await _hostService.startCapture(fps: targetFps);
       }
     } finally {
       if (mounted) {
@@ -253,6 +273,59 @@ class _HostModeDialogState extends State<HostModeDialog> {
                     Text(
                       'Internal Audio (48kHz Stereo) Supported',
                       style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            // High-Performance ADB Mode Card
+            if (_isAdbAvailable) ...[
+              Container(
+                key: const Key('adb_high_perf_card'),
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF162544),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.blueAccent.withOpacity(0.5)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.flash_on, color: Colors.cyanAccent, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'High-Performance ADB Mode (${_maxRefreshRate.toInt()}Hz)',
+                            style: const TextStyle(
+                              color: Colors.cyanAccent,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        Switch(
+                          key: const Key('adb_mode_switch'),
+                          value: _useAdbMode,
+                          activeColor: Colors.cyanAccent,
+                          onChanged: (val) {
+                            setState(() {
+                              _useAdbMode = val;
+                              _hostService.useAdbInputBridge = val;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _useAdbMode
+                          ? 'Ultra-low latency direct shell/uinput input active. Target ${_maxRefreshRate.toInt()}Hz.'
+                          : 'Using standard AccessibilityService gestures.',
+                      style: const TextStyle(color: Colors.white70, fontSize: 11),
                     ),
                   ],
                 ),
