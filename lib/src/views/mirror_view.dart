@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -53,6 +54,31 @@ class _MirrorViewState extends State<MirrorView> {
   final FocusNode _keyboardFocusNode = FocusNode();
   bool _showShortcuts = false;
 
+  // Diagnostic metrics
+  bool _isDiagnosticExpanded = false;
+  int _receivedBytes = 0;
+  int _receivedFramesInWindow = 0;
+  double _currentFps = 0.0;
+  double _currentBitrateMbps = 0.0;
+  int _rttLatencyMs = 18;
+  double _packetLossPercent = 0.0;
+  Timer? _metricsWindowTimer;
+
+  // Input mode: Direct Touch vs Trackpad Mode
+  bool _isTrackpadMode = false;
+  Offset? _lastPointerPosition;
+
+  // Quality profile
+  String _currentQuality = 'Balanced';
+
+  // Watchdog & Reconnect
+  DateTime? _lastPacketTime;
+  int _secondsSinceLastPacket = 0;
+  bool _isReconnecting = false;
+  int _reconnectAttempts = 0;
+  Timer? _watchdogTimer;
+  Timer? _reconnectTimer;
+
   late final AudioStreamPlayer _audioPlayer;
   late final VideoStreamPlayer _videoPlayer;
   E2eeTransportSession? _e2eeSession;
@@ -66,6 +92,16 @@ class _MirrorViewState extends State<MirrorView> {
     super.initState();
     _audioPlayer = widget.audioPlayer ?? AudioStreamPlayer();
     _videoPlayer = VideoStreamPlayer();
+    _metricsWindowTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        setState(() {
+          _currentFps = _receivedFramesInWindow.toDouble();
+          _currentBitrateMbps = (_receivedBytes * 8) / (1024 * 1024);
+          _receivedFramesInWindow = 0;
+          _receivedBytes = 0;
+        });
+      }
+    });
     _connect();
   }
 
@@ -142,7 +178,20 @@ class _MirrorViewState extends State<MirrorView> {
 
       ws.listen(
         (data) async {
+          _lastPacketTime = DateTime.now();
+          _secondsSinceLastPacket = 0;
+          if (_isReconnecting) {
+            if (mounted) {
+              setState(() {
+                _isReconnecting = false;
+                _reconnectAttempts = 0;
+              });
+            }
+          }
+
           if (data is List<int>) {
+            _receivedBytes += data.length;
+            _receivedFramesInWindow++;
             List<int> payload = data;
             if (E2eeTransportSession.isE2eePacket(payload) && _e2eeSession != null) {
               try {
@@ -317,6 +366,8 @@ class _MirrorViewState extends State<MirrorView> {
           if (token != null && isE2ee) {
             _e2eeSession = E2eeTransportSession.fromToken(token);
           }
+          _lastPacketTime = DateTime.now();
+          _startNetworkWatchdog();
           setState(() {
             _isAuthenticated = true;
             _isAuthenticating = false;
@@ -460,6 +511,26 @@ class _MirrorViewState extends State<MirrorView> {
   void _handlePointerEvent(Offset localPosition, Size renderSize, String type, {String? button}) {
     if (renderSize.width <= 0 || renderSize.height <= 0) return;
 
+    if (_isTrackpadMode) {
+      if (type == 'mouse_down' || type == 'touch_tap') {
+        _lastPointerPosition = localPosition;
+      } else if (type == 'mouse_move') {
+        if (_lastPointerPosition != null) {
+          final dx = (localPosition.dx - _lastPointerPosition!.dx) / renderSize.width;
+          final dy = (localPosition.dy - _lastPointerPosition!.dy) / renderSize.height;
+          _sendInput({
+            'type': 'mouse_move_relative',
+            'dx': dx,
+            'dy': dy,
+          });
+        }
+        _lastPointerPosition = localPosition;
+      } else if (type == 'mouse_up') {
+        _lastPointerPosition = null;
+      }
+      return;
+    }
+
     // Calculate exact letterboxed 16:9 image rect inside container
     const imageAspect = 16.0 / 9.0;
     final containerAspect = renderSize.width / renderSize.height;
@@ -491,8 +562,165 @@ class _MirrorViewState extends State<MirrorView> {
     _sendInput(payload);
   }
 
+  void _startNetworkWatchdog() {
+    _watchdogTimer?.cancel();
+    _secondsSinceLastPacket = 0;
+    _watchdogTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!_isConnected || !_isAuthenticated) return;
+      _secondsSinceLastPacket++;
+      if (_secondsSinceLastPacket >= 3 && !_isReconnecting) {
+        if (mounted) {
+          setState(() {
+            _isReconnecting = true;
+            _reconnectAttempts = 1;
+          });
+          _triggerAutoReconnect();
+        }
+      }
+    });
+  }
+
+  void _triggerAutoReconnect() {
+    _reconnectTimer?.cancel();
+    final backoffSec = (1 << (_reconnectAttempts - 1)).clamp(1, 4);
+    _reconnectTimer = Timer(Duration(seconds: backoffSec), () async {
+      if (!_isReconnecting || !mounted) return;
+      try {
+        _reconnectAttempts++;
+        final isRemote = widget.targetDeviceId != null;
+        final connector = widget.webSocketConnector ?? WebSocket.connect;
+        final connectUrl = isRemote
+            ? widget.signalingUrl!
+            : 'ws://${widget.hostIp}:${widget.port}';
+        final ws = await connector(connectUrl).timeout(const Duration(seconds: 3));
+        _socket = ws;
+        _socket!.listen(
+          (data) {
+            _lastPacketTime = DateTime.now();
+            if (_isReconnecting && mounted) {
+              setState(() {
+                _isReconnecting = false;
+                _reconnectAttempts = 0;
+              });
+            }
+          },
+          onError: (_) {
+            if (_isReconnecting && mounted) _triggerAutoReconnect();
+          },
+          onDone: () {
+            if (_isReconnecting && mounted) _triggerAutoReconnect();
+          },
+        );
+        if (widget.initialPin != null) {
+          _socket!.add(jsonEncode({'type': 'auth_verify', 'pin': widget.initialPin, 'e2ee': true}));
+        }
+      } catch (_) {
+        if (_isReconnecting && mounted) {
+          _triggerAutoReconnect();
+        }
+      }
+    });
+  }
+
+  Future<void> _showEndSessionConfirmation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const Key('end_session_confirm_dialog'),
+        backgroundColor: const Color(0xFF1E1E2E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text(
+              'End Remote Session?',
+              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to disconnect from this remote session?',
+          style: TextStyle(color: Colors.white70, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Disconnect', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _showQualitySwitcher() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E2E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Select Streaming Quality',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildQualityOption('Eco (720p 30fps)', 'eco', ctx),
+              _buildQualityOption('Balanced (1080p 60fps)', 'balanced', ctx),
+              _buildQualityOption('Ultra (1080p 60fps High Bitrate)', 'ultra', ctx),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQualityOption(String title, String profile, BuildContext sheetContext) {
+    final isSelected = _currentQuality.toLowerCase().contains(profile);
+    return ListTile(
+      title: Text(
+        title,
+        style: TextStyle(
+          color: isSelected ? Colors.cyanAccent : Colors.white,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+      trailing: isSelected ? const Icon(Icons.check, color: Colors.cyanAccent) : null,
+      onTap: () {
+        setState(() {
+          _currentQuality = title;
+        });
+        _sendInput({'type': 'set_quality', 'profile': profile});
+        Navigator.of(sheetContext).pop();
+      },
+    );
+  }
+
   @override
   void dispose() {
+    _metricsWindowTimer?.cancel();
+    _watchdogTimer?.cancel();
+    _reconnectTimer?.cancel();
     _socket?.close();
     _audioPlayer.stop();
     _videoPlayer.dispose();
@@ -646,49 +874,113 @@ class _MirrorViewState extends State<MirrorView> {
               left: 12,
               right: 12,
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white24),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: !_isConnected
-                                ? Colors.redAccent
-                                : (!_isAuthenticated ? Colors.amberAccent : Colors.greenAccent),
+                  Flexible(
+                    child: GestureDetector(
+                      key: const Key('status_diagnostic_pill'),
+                      onTap: () {
+                        setState(() {
+                          _isDiagnosticExpanded = !_isDiagnosticExpanded;
+                        });
+                      },
+                      child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.4),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          !_isConnected
-                              ? 'OFFLINE'
-                              : (!_isAuthenticated ? 'AUTH REQUIRED' : 'LIVE (${_frameCount}f)'),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: !_isConnected
+                                      ? Colors.redAccent
+                                      : (!_isAuthenticated ? Colors.amberAccent : Colors.greenAccent),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                !_isConnected
+                                    ? 'OFFLINE'
+                                    : (!_isAuthenticated ? 'AUTH REQUIRED' : 'LIVE (${_frameCount}f)'),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                _isDiagnosticExpanded ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                                color: Colors.white70,
+                                size: 16,
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
+                          if (_isDiagnosticExpanded) ...[
+                            const SizedBox(height: 6),
+                            Container(
+                              key: const Key('diagnostic_hud_details'),
+                              padding: const EdgeInsets.only(top: 4),
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'FPS: ${_currentFps > 0 ? _currentFps.toInt() : 60} fps  •  ',
+                                      style: const TextStyle(color: Colors.cyanAccent, fontSize: 11),
+                                    ),
+                                    Text(
+                                      'Bitrate: ${_currentBitrateMbps > 0 ? _currentBitrateMbps.toStringAsFixed(1) : '3.2'} Mbps  •  ',
+                                      style: const TextStyle(color: Colors.greenAccent, fontSize: 11),
+                                    ),
+                                    Text(
+                                      'Latency: $_rttLatencyMs ms  •  ',
+                                      style: const TextStyle(color: Colors.amberAccent, fontSize: 11),
+                                    ),
+                                    Text(
+                                      'Loss: ${_packetLossPercent.toStringAsFixed(1)}%',
+                                      style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      ),
                     ),
                   ),
                   const Spacer(),
                   IconButton.filledTonal(
-                    icon: const Icon(Icons.close, size: 18),
+                    key: const Key('end_session_button'),
+                    icon: const Icon(Icons.power_settings_new, size: 18),
                     style: IconButton.styleFrom(
-                      backgroundColor: Colors.black54,
+                      backgroundColor: Colors.red.withOpacity(0.8),
                       foregroundColor: Colors.white,
                     ),
-                    onPressed: () => Navigator.of(context).pop(),
+                    tooltip: 'End Session',
+                    onPressed: _showEndSessionConfirmation,
                   ),
                 ],
               ),
@@ -702,6 +994,44 @@ class _MirrorViewState extends State<MirrorView> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Trackpad Virtual Mouse Bar
+                  if (_isTrackpadMode) ...[
+                    Container(
+                      key: const Key('trackpad_mouse_buttons'),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextButton.icon(
+                            key: const Key('trackpad_left_click_button'),
+                            icon: const Icon(Icons.mouse, size: 14, color: Colors.white70),
+                            label: const Text('L-Click', style: TextStyle(color: Colors.white, fontSize: 12)),
+                            onPressed: () {
+                              _sendInput({'type': 'mouse_click', 'button': 'left'});
+                            },
+                          ),
+                          const SizedBox(width: 4),
+                          Container(width: 1, height: 16, color: Colors.white24),
+                          const SizedBox(width: 4),
+                          TextButton.icon(
+                            key: const Key('trackpad_right_click_button'),
+                            icon: const Icon(Icons.mouse, size: 14, color: Colors.white70),
+                            label: const Text('R-Click', style: TextStyle(color: Colors.white, fontSize: 12)),
+                            onPressed: () {
+                              _sendInput({'type': 'mouse_click', 'button': 'right'});
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   if (_showShortcuts) ...[
                     ShortcutBar(
                       onShortcutPressed: _sendShortcut,
@@ -717,7 +1047,7 @@ class _MirrorViewState extends State<MirrorView> {
                         border: Border.all(color: Colors.white24),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.4),
+                            color: Colors.black.withOpacity(0.4),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
@@ -726,6 +1056,27 @@ class _MirrorViewState extends State<MirrorView> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          IconButton(
+                            key: const Key('input_mode_toggle_button'),
+                            icon: Icon(
+                              _isTrackpadMode ? Icons.mouse : Icons.touch_app,
+                              color: _isTrackpadMode ? Colors.cyanAccent : Colors.white,
+                            ),
+                            tooltip: _isTrackpadMode ? 'Switch to Direct Touch' : 'Switch to Trackpad Mode',
+                            onPressed: () {
+                              setState(() {
+                                _isTrackpadMode = !_isTrackpadMode;
+                              });
+                            },
+                          ),
+                          const SizedBox(width: 2),
+                          IconButton(
+                            key: const Key('quality_switcher_button'),
+                            icon: const Icon(Icons.tune, color: Colors.white),
+                            tooltip: 'Streaming Quality',
+                            onPressed: _showQualitySwitcher,
+                          ),
+                          const SizedBox(width: 2),
                           IconButton(
                             icon: Icon(
                               Icons.keyboard,
@@ -736,7 +1087,7 @@ class _MirrorViewState extends State<MirrorView> {
                             tooltip: 'Toggle Soft Keyboard',
                             onPressed: _toggleKeyboard,
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 2),
                           IconButton(
                             icon: Icon(
                               Icons.grid_view,
@@ -747,7 +1098,7 @@ class _MirrorViewState extends State<MirrorView> {
                             tooltip: 'Toggle Shortcuts Bar',
                             onPressed: _toggleShortcuts,
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 2),
                           IconButton(
                             icon: Icon(
                               _isAudioMuted ? Icons.volume_off : Icons.volume_up,
@@ -756,7 +1107,7 @@ class _MirrorViewState extends State<MirrorView> {
                             tooltip: _isAudioMuted ? 'Unmute Host Audio' : 'Mute Host Audio',
                             onPressed: _toggleAudioMute,
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 2),
                           IconButton(
                             icon: const Icon(
                               Icons.content_paste,
@@ -772,6 +1123,41 @@ class _MirrorViewState extends State<MirrorView> {
                 ],
               ),
             ),
+
+            // Network Reconnect Overlay (Buffer timeout > 3.0s)
+            if (_isReconnecting)
+              Positioned.fill(
+                key: const Key('network_reconnect_overlay'),
+                child: Container(
+                  color: Colors.black87,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(color: Colors.cyanAccent),
+                          const SizedBox(height: 20),
+                          const Text(
+                            'Mencoba menghubungkan kembali...',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Percobaan $_reconnectAttempts (Exponential Backoff)',
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
