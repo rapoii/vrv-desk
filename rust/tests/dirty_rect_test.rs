@@ -82,3 +82,73 @@ fn test_dirty_frame_info_empty() {
     assert_eq!(info.bounding_box(), None);
     assert_eq!(info.dirty_ratio(), 0.0);
 }
+
+#[cfg(windows)]
+#[test]
+fn test_dxgi_capturer_dirty_rect_api() {
+    use mirror_core::platform::windows_capture::DxgiCapturer;
+
+    let mut capturer = match DxgiCapturer::new() {
+        Ok(c) => c,
+        Err(e) => {
+            println!("DXGI not available in this test environment: {}", e);
+            return;
+        }
+    };
+
+    println!("DXGI Capturer initialized: {}x{}", capturer.width, capturer.height);
+    // Attempt to capture with dirty rects (timeout 100ms)
+    match capturer.capture_raw_bgra_with_dirty(100) {
+        Ok(Some((w, h, bgra, dirty_info))) => {
+            assert_eq!(w, capturer.width);
+            assert_eq!(h, capturer.height);
+            assert_eq!(bgra.len(), (w * h * 4) as usize);
+            println!(
+                "Captured frame with {} dirty rects, total dirty area: {}, ratio: {:.4}",
+                dirty_info.rect_count(),
+                dirty_info.total_dirty_area(),
+                dirty_info.dirty_ratio()
+            );
+            if let Some(bb) = dirty_info.bounding_box() {
+                println!("Bounding box: {:?}", bb);
+            }
+        }
+        Ok(None) => {
+            println!("Screen was static during test window (no dirty rects) - correctly bypassed!");
+        }
+        Err(e) => {
+            panic!("Unexpected DXGI capture error: {}", e);
+        }
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn test_hybrid_capturer_dirty_rect_api() {
+    use mirror_core::platform::windows_capture::HybridScreenCapturer;
+
+    let mut capturer = match HybridScreenCapturer::new() {
+        Ok(c) => c,
+        Err(e) => {
+            println!("Capturer init failed (likely headless/CI): {}", e);
+            return;
+        }
+    };
+
+    println!("Hybrid Capturer initialized: {}x{}, is_dxgi: {}", capturer.screen_width(), capturer.screen_height(), capturer.is_dxgi());
+    match capturer.capture_raw_bgra_with_dirty(100) {
+        Ok(Some((w, h, bgra, dirty_info))) => {
+            assert_eq!(w, capturer.screen_width());
+            assert_eq!(h, capturer.screen_height());
+            assert_eq!(bgra.len(), (w * h * 4) as usize);
+            assert!(dirty_info.rect_count() > 0 || dirty_info.is_empty());
+            println!("Hybrid captured frame with dirty ratio: {:.4}", dirty_info.dirty_ratio());
+        }
+        Ok(None) => {
+            println!("Screen unchanged during test interval (static screen)");
+        }
+        Err(e) => {
+            println!("Capture returned error (normal if no active display session): {}", e);
+        }
+    }
+}

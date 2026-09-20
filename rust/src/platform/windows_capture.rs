@@ -8,6 +8,10 @@ use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
 #[cfg(windows)]
 use windows::Win32::Graphics::Dxgi::*;
+#[cfg(windows)]
+use windows::Win32::Foundation::RECT;
+
+use crate::dirty_rect::{DirtyFrameInfo, DirtyRect};
 
 use image::codecs::jpeg::JpegEncoder;
 use image::{ImageEncoder, RgbaImage};
@@ -301,12 +305,12 @@ impl DxgiCapturer {
         }
     }
 
-    /// Acquire the next frame from GPU and return raw BGRA buffer directly.
-    /// Returns Ok(None) if timeout elapsed without screen update (DXGI_ERROR_WAIT_TIMEOUT).
-    pub fn capture_raw_bgra(
+    /// Acquire the next frame from GPU and return raw BGRA buffer with dirty region metadata.
+    /// Returns Ok(None) if timeout elapsed or no pixels changed (bypassing staging copy).
+    pub fn capture_raw_bgra_with_dirty(
         &mut self,
         timeout_ms: u32,
-    ) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
+    ) -> Result<Option<(u32, u32, Vec<u8>, DirtyFrameInfo)>, String> {
         unsafe {
             let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
             let mut desktop_resource: Option<IDXGIResource> = None;
@@ -327,6 +331,48 @@ impl DxgiCapturer {
                     return Ok(None);
                 }
                 return Err(format!("AcquireNextFrame failed: {:?}", e));
+            }
+
+            let width = self.screen_width;
+            let height = self.screen_height;
+
+            // Extract dirty rects from DXGI metadata
+            let mut dirty_rects = Vec::new();
+            if frame_info.TotalMetadataBufferSize > 0 {
+                let mut buffer_size = 0u32;
+                let _ = self.duplication.GetFrameDirtyRects(0, std::ptr::null_mut(), &mut buffer_size);
+                if buffer_size > 0 {
+                    let count = (buffer_size as usize) / std::mem::size_of::<RECT>();
+                    let mut rect_buf = vec![RECT::default(); count];
+                    let mut actual_size = 0u32;
+                    if self
+                        .duplication
+                        .GetFrameDirtyRects(
+                            buffer_size,
+                            rect_buf.as_mut_ptr(),
+                            &mut actual_size,
+                        )
+                        .is_ok()
+                    {
+                        for r in rect_buf {
+                            let dr = DirtyRect::new(r.left, r.top, r.right, r.bottom);
+                            if !dr.is_empty() {
+                                dirty_rects.push(dr);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if dirty_rects.is_empty() && frame_info.AccumulatedFrames > 0 {
+                // Whole frame changed / coalesced
+                dirty_rects.push(DirtyRect::new(0, 0, width as i32, height as i32));
+            }
+
+            // Zero-overhead check: If no frames accumulated and no dirty rects found, bypass!
+            if frame_info.AccumulatedFrames == 0 && dirty_rects.is_empty() {
+                let _ = self.duplication.ReleaseFrame();
+                return Ok(None);
             }
 
             let desktop_resource = match desktop_resource {
@@ -367,8 +413,6 @@ impl DxgiCapturer {
                 return Err(format!("Map staging texture failed: {:?}", e));
             }
 
-            let width = self.screen_width;
-            let height = self.screen_height;
             let row_pitch = mapped.RowPitch as usize;
             let src_slice =
                 std::slice::from_raw_parts(mapped.pData as *const u8, row_pitch * height as usize);
@@ -384,8 +428,19 @@ impl DxgiCapturer {
             self.context.Unmap(&self.staging_texture, 0);
             let _ = self.duplication.ReleaseFrame();
 
-            Ok(Some((width, height, raw_pixels)))
+            let dirty_info = DirtyFrameInfo::new(width, height, dirty_rects);
+            Ok(Some((width, height, raw_pixels, dirty_info)))
         }
+    }
+
+    /// Acquire the next frame from GPU and return raw BGRA buffer directly.
+    /// Returns Ok(None) if timeout elapsed without screen update (DXGI_ERROR_WAIT_TIMEOUT).
+    pub fn capture_raw_bgra(
+        &mut self,
+        timeout_ms: u32,
+    ) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
+        self.capture_raw_bgra_with_dirty(timeout_ms)
+            .map(|opt| opt.map(|(w, h, bgra, _dirty)| (w, h, bgra)))
     }
 }
 
@@ -416,6 +471,13 @@ impl DxgiCapturer {
         _quality: u8,
         _target_width: u32,
     ) -> Result<Option<Vec<u8>>, String> {
+        Err("DXGI is only supported on Windows".to_string())
+    }
+
+    pub fn capture_raw_bgra_with_dirty(
+        &mut self,
+        _timeout_ms: u32,
+    ) -> Result<Option<(u32, u32, Vec<u8>, DirtyFrameInfo)>, String> {
         Err("DXGI is only supported on Windows".to_string())
     }
 }
@@ -518,22 +580,17 @@ impl HybridScreenCapturer {
         Ok(Some(jpeg))
     }
 
-    /// Capture frame from GPU/GDI and encode with H.264 real-time compression (VH24 packet)
-    pub fn capture_h264(
+    /// Capture raw BGRA buffer along with dirty frame metrics.
+    pub fn capture_raw_bgra_with_dirty(
         &mut self,
         timeout_ms: u32,
-        encoder: &mut crate::video::VideoEncoder,
-    ) -> Result<Option<Vec<u8>>, String> {
+    ) -> Result<Option<(u32, u32, Vec<u8>, DirtyFrameInfo)>, String> {
         #[cfg(windows)]
         {
             if self.is_dxgi {
                 if let Some(ref mut dxgi) = self.dxgi {
-                    match dxgi.capture_raw_bgra(timeout_ms) {
-                        Ok(Some((w, h, bgra))) => {
-                            let packet = encoder.encode_bgra(w, h, &bgra)?;
-                            return Ok(Some(packet));
-                        }
-                        Ok(None) => return Ok(None),
+                    match dxgi.capture_raw_bgra_with_dirty(timeout_ms) {
+                        Ok(res) => return Ok(res),
                         Err(e) => {
                             eprintln!("⚠️ DXGI capture error: {}, falling back to GDI engine", e);
                             self.is_dxgi = false;
@@ -547,22 +604,46 @@ impl HybridScreenCapturer {
 
             if let Some(ref gdi) = self.gdi {
                 let (w, h, bgra) = gdi.capture_raw_bgra()?;
-                let packet = encoder.encode_bgra(w, h, &bgra)?;
-                return Ok(Some(packet));
+                let dirty = DirtyFrameInfo::new(w, h, vec![DirtyRect::new(0, 0, w as i32, h as i32)]);
+                return Ok(Some((w, h, bgra, dirty)));
             }
 
             let gdi = crate::gdi_capture::ScreenCapturer::new()?;
             let (w, h, bgra) = gdi.capture_raw_bgra()?;
-            let packet = encoder.encode_bgra(w, h, &bgra)?;
+            let dirty = DirtyFrameInfo::new(w, h, vec![DirtyRect::new(0, 0, w as i32, h as i32)]);
             self.gdi = Some(gdi);
-            Ok(Some(packet))
+            Ok(Some((w, h, bgra, dirty)))
         }
 
         #[cfg(not(windows))]
         {
             let _ = timeout_ms;
-            let _ = encoder;
             Err("Screen capture only supported on Windows".to_string())
         }
+    }
+
+    /// Capture frame from GPU/GDI and encode with H.264 real-time compression with dirty region metadata
+    pub fn capture_h264_with_dirty(
+        &mut self,
+        timeout_ms: u32,
+        encoder: &mut crate::video::VideoEncoder,
+    ) -> Result<Option<(Vec<u8>, DirtyFrameInfo)>, String> {
+        match self.capture_raw_bgra_with_dirty(timeout_ms)? {
+            Some((w, h, bgra, dirty)) => {
+                let packet = encoder.encode_bgra(w, h, &bgra)?;
+                Ok(Some((packet, dirty)))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Capture frame from GPU/GDI and encode with H.264 real-time compression (VH24 packet)
+    pub fn capture_h264(
+        &mut self,
+        timeout_ms: u32,
+        encoder: &mut crate::video::VideoEncoder,
+    ) -> Result<Option<Vec<u8>>, String> {
+        self.capture_h264_with_dirty(timeout_ms, encoder)
+            .map(|opt| opt.map(|(pkt, _dirty)| pkt))
     }
 }
