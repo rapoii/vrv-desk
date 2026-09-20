@@ -1,15 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../services/audio_stream_player.dart';
-import '../services/video_stream_player.dart';
 import '../services/e2ee_transport.dart';
+import '../services/file_transfer_service.dart';
+import '../services/unattended_storage.dart';
+import '../services/video_stream_player.dart';
+import '../theme/neobrutalist_theme.dart';
 import '../widgets/pin_dialog.dart';
 import '../widgets/shortcut_bar.dart';
-import '../services/unattended_storage.dart';
-import '../services/file_transfer_service.dart';
 import 'file_manager_view.dart';
 
 typedef WebSocketConnector = Future<WebSocket> Function(String url);
@@ -32,8 +35,10 @@ class MirrorView extends StatefulWidget {
     this.targetDeviceId,
     this.webSocketConnector,
     this.audioPlayer,
-  }) : assert(hostIp != null || (signalingUrl != null && targetDeviceId != null),
-            'Must provide either hostIp or both signalingUrl and targetDeviceId');
+  }) : assert(
+         hostIp != null || (signalingUrl != null && targetDeviceId != null),
+         'Must provide either hostIp or both signalingUrl and targetDeviceId',
+       );
 
   @override
   State<MirrorView> createState() => _MirrorViewState();
@@ -64,8 +69,8 @@ class _MirrorViewState extends State<MirrorView> {
   int _receivedFramesInWindow = 0;
   double _currentFps = 0.0;
   double _currentBitrateMbps = 0.0;
-  int _rttLatencyMs = 18;
-  double _packetLossPercent = 0.0;
+  final int _rttLatencyMs = 18;
+  final double _packetLossPercent = 0.0;
   Timer? _metricsWindowTimer;
 
   // Input mode: Direct Touch vs Trackpad Mode
@@ -145,7 +150,9 @@ class _MirrorViewState extends State<MirrorView> {
 
   Future<void> _connect() async {
     final isRemote = widget.targetDeviceId != null;
-    final targetLabel = isRemote ? 'Device ID ${widget.targetDeviceId}' : '${widget.hostIp}:${widget.port}';
+    final targetLabel = isRemote
+        ? 'Device ID ${widget.targetDeviceId}'
+        : '${widget.hostIp}:${widget.port}';
 
     setState(() {
       _isConnected = false;
@@ -163,15 +170,15 @@ class _MirrorViewState extends State<MirrorView> {
           ? widget.signalingUrl!
           : 'ws://${widget.hostIp}:${widget.port}';
 
-      final ws = await connector(
-        connectUrl,
-      ).timeout(const Duration(seconds: 5));
+      final ws = await connector(connectUrl)
+          .timeout(const Duration(seconds: 5));
 
       _socket = ws;
 
       if (isRemote) {
         setState(() {
-          _statusMessage = 'Connecting via signaling to Device ${widget.targetDeviceId}...';
+          _statusMessage =
+              'Connecting via signaling to Device ${widget.targetDeviceId}...';
         });
         // Send connect_request with target_id
         final connectReq = jsonEncode({
@@ -204,9 +211,12 @@ class _MirrorViewState extends State<MirrorView> {
             _receivedBytes += data.length;
             _receivedFramesInWindow++;
             List<int> payload = data;
-            if (E2eeTransportSession.isE2eePacket(payload) && _e2eeSession != null) {
+            if (E2eeTransportSession.isE2eePacket(payload) &&
+                _e2eeSession != null) {
               try {
-                payload = await _e2eeSession!.decrypt(Uint8List.fromList(payload));
+                payload = await _e2eeSession!.decrypt(
+                  Uint8List.fromList(payload),
+                );
               } catch (e) {
                 debugPrint('E2EE decryption error: $e');
                 return;
@@ -267,11 +277,14 @@ class _MirrorViewState extends State<MirrorView> {
       }
       final jsonStr = jsonEncode(event);
       if (_e2eeSession != null && _isAuthenticated) {
-        _e2eeSession!.encrypt(Uint8List.fromList(utf8.encode(jsonStr))).then((enc) {
-          _socket?.add(enc);
-        }).catchError((e) {
-          _socket?.add(jsonStr);
-        });
+        _e2eeSession!
+            .encrypt(Uint8List.fromList(utf8.encode(jsonStr)))
+            .then((enc) {
+              _socket?.add(enc);
+            })
+            .catchError((e) {
+              _socket?.add(jsonStr);
+            });
       } else {
         _socket!.add(jsonStr);
       }
@@ -283,11 +296,7 @@ class _MirrorViewState extends State<MirrorView> {
       _isAuthenticating = true;
       _authError = null;
     });
-    _sendInput({
-      'type': 'auth_verify',
-      'pin': pin,
-      'e2ee': true,
-    });
+    _sendInput({'type': 'auth_verify', 'pin': pin, 'e2ee': true});
   }
 
   void _showPinDialog() {
@@ -329,7 +338,9 @@ class _MirrorViewState extends State<MirrorView> {
   }
 
   void _handleAuthRequired() {
-    if (widget.initialPin != null && widget.initialPin!.isNotEmpty && !_hasSentInitialPin) {
+    if (widget.initialPin != null &&
+        widget.initialPin!.isNotEmpty &&
+        !_hasSentInitialPin) {
       _hasSentInitialPin = true;
       _sendPin(widget.initialPin!);
     } else {
@@ -339,10 +350,7 @@ class _MirrorViewState extends State<MirrorView> {
 
   void _sendText(String text) {
     if (text.isEmpty) return;
-    _sendInput({
-      'type': 'type_text',
-      'text': text,
-    });
+    _sendInput({'type': 'type_text', 'text': text});
   }
 
   void _sendShortcut(String shortcutName) {
@@ -360,10 +368,7 @@ class _MirrorViewState extends State<MirrorView> {
     } else if (shortcutName == 'task_manager') {
       _sendInput({'type': 'system_action', 'action': 'taskmgr'});
     } else {
-      _sendInput({
-        'type': 'shortcut',
-        'name': shortcutName,
-      });
+      _sendInput({'type': 'shortcut', 'name': shortcutName});
     }
   }
 
@@ -373,7 +378,8 @@ class _MirrorViewState extends State<MirrorView> {
       if (json is Map<String, dynamic>) {
         final type = json['type'];
         if (type == 'connect_error') {
-          final reason = json['reason'] as String? ?? 'Signaling connection failed';
+          final reason =
+              json['reason'] as String? ?? 'Signaling connection failed';
           setState(() {
             _isConnected = false;
             _statusMessage = 'Signaling error: $reason';
@@ -416,9 +422,11 @@ class _MirrorViewState extends State<MirrorView> {
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(_isE2eeActive
-                    ? 'Connected & Authenticated (🔒 E2EE Encrypted)'
-                    : 'Connected & Authenticated with Host PC'),
+                content: Text(
+                  _isE2eeActive
+                      ? 'Connected & Authenticated (🔒 E2EE Encrypted)'
+                      : 'Connected & Authenticated with Host PC',
+                ),
                 duration: const Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
               ),
@@ -438,7 +446,9 @@ class _MirrorViewState extends State<MirrorView> {
               _dismissPinDialog();
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Authentication failed: $reason. Connection locked.'),
+                  content: Text(
+                    'Authentication failed: $reason. Connection locked.',
+                  ),
                   backgroundColor: Colors.red,
                   duration: const Duration(seconds: 3),
                   behavior: SnackBarBehavior.floating,
@@ -452,7 +462,9 @@ class _MirrorViewState extends State<MirrorView> {
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Authentication failed: $reason ($remaining attempts remaining)'),
+                  content: Text(
+                    'Authentication failed: $reason ($remaining attempts remaining)',
+                  ),
                   backgroundColor: Colors.redAccent,
                   duration: const Duration(seconds: 3),
                   behavior: SnackBarBehavior.floating,
@@ -468,9 +480,11 @@ class _MirrorViewState extends State<MirrorView> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(success
-                    ? '⚡ Sent Ctrl+Alt+Del (SAS) to remote host'
-                    : '⚠️ Failed to trigger Ctrl+Alt+Del on host'),
+                content: Text(
+                  success
+                      ? '⚡ Sent Ctrl+Alt+Del (SAS) to remote host'
+                      : '⚠️ Failed to trigger Ctrl+Alt+Del on host',
+                ),
                 backgroundColor: success ? Colors.green : Colors.orange,
                 duration: const Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
@@ -482,9 +496,11 @@ class _MirrorViewState extends State<MirrorView> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(success
-                    ? '🛡️ Host Administrator elevation requested'
-                    : '⚠️ Host elevation request failed'),
+                content: Text(
+                  success
+                      ? '🛡️ Host Administrator elevation requested'
+                      : '⚠️ Host elevation request failed',
+                ),
                 backgroundColor: success ? Colors.blueAccent : Colors.redAccent,
                 duration: const Duration(seconds: 3),
                 behavior: SnackBarBehavior.floating,
@@ -502,9 +518,11 @@ class _MirrorViewState extends State<MirrorView> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(success
-                    ? '🖥️ Switched to Display ${idx + 1} ($w x $h)'
-                    : '⚠️ Failed to switch display: ${json['error']}'),
+                content: Text(
+                  success
+                      ? '🖥️ Switched to Display ${idx + 1} ($w x $h)'
+                      : '⚠️ Failed to switch display: ${json['error']}',
+                ),
                 backgroundColor: success ? const Color(0xFF10B981) : Colors.red,
                 duration: const Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
@@ -520,10 +538,14 @@ class _MirrorViewState extends State<MirrorView> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(success
-                    ? '🔒 Privacy Mode: ${enabled ? 'ON (Screen blanked & physical inputs locked)' : 'OFF'}'
-                    : '⚠️ Failed to toggle privacy mode: ${json['error']}'),
-                backgroundColor: (enabled && success) ? const Color(0xFF6366F1) : const Color(0xFF374151),
+                content: Text(
+                  success
+                      ? '🔒 Privacy Mode: ${enabled ? 'ON (Screen blanked & physical inputs locked)' : 'OFF'}'
+                      : '⚠️ Failed to toggle privacy mode: ${json['error']}',
+                ),
+                backgroundColor: (enabled && success)
+                    ? const Color(0xFF6366F1)
+                    : const Color(0xFF374151),
                 duration: const Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
               ),
@@ -550,8 +572,12 @@ class _MirrorViewState extends State<MirrorView> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('🖥️ Virtual Display: ${installed ? "Driver Installed" : "Driver Not Installed"} • ${isHeadless ? "Headless Mode" : "$activeCount Active"}'),
-                backgroundColor: installed ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                content: Text(
+                  '🖥️ Virtual Display: ${installed ? "Driver Installed" : "Driver Not Installed"} • ${isHeadless ? "Headless Mode" : "$activeCount Active"}',
+                ),
+                backgroundColor: installed
+                    ? const Color(0xFF10B981)
+                    : const Color(0xFFF59E0B),
                 duration: const Duration(seconds: 3),
                 behavior: SnackBarBehavior.floating,
               ),
@@ -563,7 +589,11 @@ class _MirrorViewState extends State<MirrorView> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(success ? '✅ Driver Installed: $message' : '⚠️ Install Failed: $message'),
+                content: Text(
+                  success
+                      ? '✅ Driver Installed: $message'
+                      : '⚠️ Install Failed: $message',
+                ),
                 backgroundColor: success ? const Color(0xFF10B981) : Colors.red,
                 duration: const Duration(seconds: 3),
                 behavior: SnackBarBehavior.floating,
@@ -576,7 +606,9 @@ class _MirrorViewState extends State<MirrorView> {
           _lastLocalClipboard = text;
           await Clipboard.setData(ClipboardData(text: text));
           if (mounted) {
-            final preview = text.length > 30 ? '${text.substring(0, 30)}...' : text;
+            final preview = text.length > 30
+                ? '${text.substring(0, 30)}...'
+                : text;
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -595,9 +627,15 @@ class _MirrorViewState extends State<MirrorView> {
     if (!mounted || monitors.isEmpty) return;
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E2028),
+      backgroundColor: NeobrutalTheme.paper,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(NeobrutalTheme.radius),
+        ),
+        side: BorderSide(
+          color: NeobrutalTheme.ink,
+          width: NeobrutalTheme.borderWidth,
+        ),
       ),
       builder: (ctx) {
         return SafeArea(
@@ -613,13 +651,13 @@ class _MirrorViewState extends State<MirrorView> {
                     const Text(
                       '🖥️ Select Active Display',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: NeobrutalTheme.ink,
                         fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white70),
+                      icon: const Icon(Icons.close, color: NeobrutalTheme.ink),
                       onPressed: () => Navigator.pop(ctx),
                     ),
                   ],
@@ -633,30 +671,44 @@ class _MirrorViewState extends State<MirrorView> {
                   final h = map['height'] ?? 0;
                   final isPrimary = map['is_primary'] == true;
 
-                  return Card(
-                    color: const Color(0xFF282B36),
+                  return Container(
                     margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      leading: Icon(
-                        Icons.monitor,
-                        color: isPrimary ? const Color(0xFF10B981) : Colors.white70,
-                      ),
-                      title: Text(
-                        name,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: Text(
-                        '$w x $h ${isPrimary ? '(Primary)' : ''}',
-                        style: TextStyle(
-                          color: isPrimary ? const Color(0xFF10B981) : Colors.white54,
-                          fontSize: 12,
+                    decoration: NeobrutalTheme.compactPanel(
+                      color: isPrimary
+                          ? NeobrutalTheme.mint
+                          : NeobrutalTheme.surface,
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        leading: const Icon(
+                          Icons.monitor,
+                          color: NeobrutalTheme.ink,
                         ),
+                        title: Text(
+                          name,
+                          style: const TextStyle(
+                            color: NeobrutalTheme.ink,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '$w x $h ${isPrimary ? '(Primary)' : ''}',
+                          style: const TextStyle(
+                            color: NeobrutalTheme.muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        trailing: const Icon(
+                          Icons.chevron_right,
+                          color: NeobrutalTheme.ink,
+                        ),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _sendInput({'type': 'switch_monitor', 'index': idx});
+                        },
                       ),
-                      trailing: const Icon(Icons.chevron_right, color: Colors.white38),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _sendInput({'type': 'switch_monitor', 'index': idx});
-                      },
                     ),
                   );
                 }),
@@ -671,7 +723,9 @@ class _MirrorViewState extends State<MirrorView> {
   void _startClipboardSync() {
     _clipboardPollingTimer?.cancel();
     if (!_autoClipboardSync) return;
-    _clipboardPollingTimer = Timer.periodic(const Duration(milliseconds: 750), (timer) async {
+    _clipboardPollingTimer = Timer.periodic(const Duration(milliseconds: 750), (
+      timer,
+    ) async {
       if (!mounted || !_isAuthenticated) {
         timer.cancel();
         return;
@@ -685,10 +739,7 @@ class _MirrorViewState extends State<MirrorView> {
             currentText != _lastLocalClipboard &&
             currentText != _lastRemoteClipboard) {
           _lastLocalClipboard = currentText;
-          _sendInput({
-            'type': 'clipboard_text',
-            'text': currentText,
-          });
+          _sendInput({'type': 'clipboard_text', 'text': currentText});
         }
       } catch (_) {}
     });
@@ -699,10 +750,7 @@ class _MirrorViewState extends State<MirrorView> {
     final text = data?.text;
     if (text != null && text.isNotEmpty) {
       _lastLocalClipboard = text;
-      _sendInput({
-        'type': 'clipboard_text',
-        'text': text,
-      });
+      _sendInput({'type': 'clipboard_text', 'text': text});
       if (mounted) {
         final preview = text.length > 30 ? '${text.substring(0, 30)}...' : text;
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -740,9 +788,11 @@ class _MirrorViewState extends State<MirrorView> {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_autoClipboardSync
-              ? '📋 Auto Clipboard Sync Enabled'
-              : '📋 Auto Clipboard Sync Disabled'),
+          content: Text(
+            _autoClipboardSync
+                ? '📋 Auto Clipboard Sync Enabled'
+                : '📋 Auto Clipboard Sync Disabled',
+          ),
           duration: const Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
         ),
@@ -781,7 +831,12 @@ class _MirrorViewState extends State<MirrorView> {
     });
   }
 
-  void _handlePointerEvent(Offset localPosition, Size renderSize, String type, {String? button}) {
+  void _handlePointerEvent(
+    Offset localPosition,
+    Size renderSize,
+    String type, {
+    String? button,
+  }) {
     if (renderSize.width <= 0 || renderSize.height <= 0) return;
 
     if (_isTrackpadMode) {
@@ -789,13 +844,11 @@ class _MirrorViewState extends State<MirrorView> {
         _lastPointerPosition = localPosition;
       } else if (type == 'mouse_move') {
         if (_lastPointerPosition != null) {
-          final dx = (localPosition.dx - _lastPointerPosition!.dx) / renderSize.width;
-          final dy = (localPosition.dy - _lastPointerPosition!.dy) / renderSize.height;
-          _sendInput({
-            'type': 'mouse_move_relative',
-            'dx': dx,
-            'dy': dy,
-          });
+          final dx =
+              (localPosition.dx - _lastPointerPosition!.dx) / renderSize.width;
+          final dy =
+              (localPosition.dy - _lastPointerPosition!.dy) / renderSize.height;
+          _sendInput({'type': 'mouse_move_relative', 'dx': dx, 'dy': dy});
         }
         _lastPointerPosition = localPosition;
       } else if (type == 'mouse_up') {
@@ -824,11 +877,7 @@ class _MirrorViewState extends State<MirrorView> {
     final normX = ((localPosition.dx - offsetX) / renderW).clamp(0.0, 1.0);
     final normY = ((localPosition.dy - offsetY) / renderH).clamp(0.0, 1.0);
 
-    final payload = <String, dynamic>{
-      'type': type,
-      'x': normX,
-      'y': normY,
-    };
+    final payload = <String, dynamic>{'type': type, 'x': normX, 'y': normY};
     if (button != null) {
       payload['button'] = button;
     }
@@ -865,7 +914,8 @@ class _MirrorViewState extends State<MirrorView> {
         final connectUrl = isRemote
             ? widget.signalingUrl!
             : 'ws://${widget.hostIp}:${widget.port}';
-        final ws = await connector(connectUrl).timeout(const Duration(seconds: 3));
+        final ws = await connector(connectUrl)
+            .timeout(const Duration(seconds: 3));
         _socket = ws;
         _socket!.listen(
           (data) {
@@ -885,7 +935,13 @@ class _MirrorViewState extends State<MirrorView> {
           },
         );
         if (widget.initialPin != null) {
-          _socket!.add(jsonEncode({'type': 'auth_verify', 'pin': widget.initialPin, 'e2ee': true}));
+          _socket!.add(
+            jsonEncode({
+              'type': 'auth_verify',
+              'pin': widget.initialPin,
+              'e2ee': true,
+            }),
+          );
         }
       } catch (_) {
         if (_isReconnecting && mounted) {
@@ -900,31 +956,48 @@ class _MirrorViewState extends State<MirrorView> {
       context: context,
       builder: (ctx) => AlertDialog(
         key: const Key('end_session_confirm_dialog'),
-        backgroundColor: const Color(0xFF1E1E2E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: NeobrutalTheme.paper,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(NeobrutalTheme.radius),
+          side: const BorderSide(
+            color: NeobrutalTheme.ink,
+            width: NeobrutalTheme.borderWidth,
+          ),
+        ),
         title: const Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+            Icon(Icons.warning_amber_rounded, color: NeobrutalTheme.danger),
             SizedBox(width: 8),
             Text(
               'End Remote Session?',
-              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: NeobrutalTheme.ink,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ],
         ),
         content: const Text(
           'Are you sure you want to disconnect from this remote session?',
-          style: TextStyle(color: Colors.white70, fontSize: 13),
+          style: TextStyle(
+            color: NeobrutalTheme.ink,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: NeobrutalTheme.danger,
+              foregroundColor: NeobrutalTheme.ink,
+            ),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Disconnect', style: TextStyle(color: Colors.white)),
+            child: const Text('Disconnect'),
           ),
         ],
       ),
@@ -938,9 +1011,15 @@ class _MirrorViewState extends State<MirrorView> {
   void _showQualitySwitcher() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E1E2E),
+      backgroundColor: NeobrutalTheme.paper,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(NeobrutalTheme.radius),
+        ),
+        side: BorderSide(
+          color: NeobrutalTheme.ink,
+          width: NeobrutalTheme.borderWidth,
+        ),
       ),
       builder: (ctx) => SafeArea(
         child: Padding(
@@ -952,15 +1031,19 @@ class _MirrorViewState extends State<MirrorView> {
               const Text(
                 'Select Streaming Quality',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: NeobrutalTheme.ink,
                   fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
               const SizedBox(height: 12),
               _buildQualityOption('Eco (720p 30fps)', 'eco', ctx),
               _buildQualityOption('Balanced (1080p 60fps)', 'balanced', ctx),
-              _buildQualityOption('Ultra (1080p 60fps High Bitrate)', 'ultra', ctx),
+              _buildQualityOption(
+                'Ultra (1080p 60fps High Bitrate)',
+                'ultra',
+                ctx,
+              ),
             ],
           ),
         ),
@@ -989,24 +1072,39 @@ class _MirrorViewState extends State<MirrorView> {
     );
   }
 
-  Widget _buildQualityOption(String title, String profile, BuildContext sheetContext) {
+  Widget _buildQualityOption(
+    String title,
+    String profile,
+    BuildContext sheetContext,
+  ) {
     final isSelected = _currentQuality.toLowerCase().contains(profile);
-    return ListTile(
-      title: Text(
-        title,
-        style: TextStyle(
-          color: isSelected ? Colors.cyanAccent : Colors.white,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: NeobrutalTheme.compactPanel(
+        color: isSelected ? NeobrutalTheme.yellow : NeobrutalTheme.surface,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
+          title: Text(
+            title,
+            style: const TextStyle(
+              color: NeobrutalTheme.ink,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          trailing: isSelected
+              ? const Icon(Icons.check_circle, color: NeobrutalTheme.ink)
+              : null,
+          onTap: () {
+            setState(() {
+              _currentQuality = title;
+            });
+            _sendInput({'type': 'set_quality', 'profile': profile});
+            Navigator.of(sheetContext).pop();
+          },
         ),
       ),
-      trailing: isSelected ? const Icon(Icons.check, color: Colors.cyanAccent) : null,
-      onTap: () {
-        setState(() {
-          _currentQuality = title;
-        });
-        _sendInput({'type': 'set_quality', 'profile': profile});
-        Navigator.of(sheetContext).pop();
-      },
     );
   }
 
@@ -1034,21 +1132,42 @@ class _MirrorViewState extends State<MirrorView> {
           children: [
             // Video Canvas & Interactive Touch Layer
             Positioned.fill(
-              child: _isAuthenticated && (_textureId != null || _currentFrame != null)
+              child:
+                  _isAuthenticated &&
+                      (_textureId != null || _currentFrame != null)
                   ? LayoutBuilder(
                       builder: (context, constraints) {
-                        final size = Size(constraints.maxWidth, constraints.maxHeight);
+                        final size = Size(
+                          constraints.maxWidth,
+                          constraints.maxHeight,
+                        );
                         return Listener(
                           behavior: HitTestBehavior.opaque,
                           onPointerDown: (event) {
-                            _handlePointerEvent(event.localPosition, size, 'touch_tap');
-                            _handlePointerEvent(event.localPosition, size, 'mouse_down');
+                            _handlePointerEvent(
+                              event.localPosition,
+                              size,
+                              'touch_tap',
+                            );
+                            _handlePointerEvent(
+                              event.localPosition,
+                              size,
+                              'mouse_down',
+                            );
                           },
                           onPointerMove: (event) {
-                            _handlePointerEvent(event.localPosition, size, 'mouse_move');
+                            _handlePointerEvent(
+                              event.localPosition,
+                              size,
+                              'mouse_move',
+                            );
                           },
                           onPointerUp: (event) {
-                            _handlePointerEvent(event.localPosition, size, 'mouse_up');
+                            _handlePointerEvent(
+                              event.localPosition,
+                              size,
+                              'mouse_up',
+                            );
                           },
                           child: Center(
                             child: _textureId != null
@@ -1070,17 +1189,21 @@ class _MirrorViewState extends State<MirrorView> {
                           children: [
                             if (_isConnected && !_isAuthenticated) ...[
                               Icon(
-                                _authError != null ? Icons.lock_clock : Icons.lock_outline,
+                                _authError != null
+                                    ? Icons.lock_clock
+                                    : Icons.lock_outline,
                                 size: 54,
-                                color: _authError != null ? Colors.orangeAccent : Colors.white70,
+                                color: _authError != null
+                                    ? Colors.orangeAccent
+                                    : Colors.white70,
                               ),
                               const SizedBox(height: 16),
                               Text(
                                 _isAuthenticating
                                     ? 'Verifying PIN with Host...'
                                     : (_authError != null
-                                        ? 'Authentication Required ($_remainingAttempts attempts left)'
-                                        : 'Authentication Required'),
+                                          ? 'Authentication Required ($_remainingAttempts attempts left)'
+                                          : 'Authentication Required'),
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 16,
@@ -1110,22 +1233,37 @@ class _MirrorViewState extends State<MirrorView> {
                               else
                                 const Text(
                                   'Connection locked due to failed attempts.',
-                                  style: TextStyle(color: Colors.red, fontSize: 13),
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 13,
+                                  ),
                                 ),
                             ] else if (_isConnected && _isAuthenticated) ...[
-                              const CircularProgressIndicator(color: Colors.white),
+                              const CircularProgressIndicator(
+                                color: Colors.white,
+                              ),
                               const SizedBox(height: 16),
                               const Text(
                                 'Authenticated! Waiting for video stream...',
-                                style: TextStyle(color: Colors.white70, fontSize: 14),
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                ),
                                 textAlign: TextAlign.center,
                               ),
                             ] else ...[
-                              const Icon(Icons.cloud_off, size: 48, color: Colors.white54),
+                              const Icon(
+                                Icons.cloud_off,
+                                size: 48,
+                                color: Colors.white54,
+                              ),
                               const SizedBox(height: 16),
                               Text(
                                 _statusMessage,
-                                style: const TextStyle(color: Colors.white70, fontSize: 14),
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                ),
                                 textAlign: TextAlign.center,
                               ),
                               const SizedBox(height: 20),
@@ -1181,102 +1319,160 @@ class _MirrorViewState extends State<MirrorView> {
                         });
                       },
                       child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.black87,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.4),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E1E24),
+                          borderRadius: BorderRadius.circular(
+                            NeobrutalTheme.radius,
                           ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: !_isConnected
-                                      ? Colors.redAccent
-                                      : (!_isAuthenticated ? Colors.amberAccent : Colors.greenAccent),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                !_isConnected
-                                    ? 'OFFLINE'
-                                    : (!_isAuthenticated ? 'AUTH REQUIRED' : 'LIVE (${_frameCount}f)'),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Icon(
-                                _isDiagnosticExpanded ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                                color: Colors.white70,
-                                size: 16,
-                              ),
-                            ],
+                          border: Border.all(
+                            color: NeobrutalTheme.ink,
+                            width: NeobrutalTheme.compactBorderWidth,
                           ),
-                          if (_isDiagnosticExpanded) ...[
-                            const SizedBox(height: 6),
-                            Container(
-                              key: const Key('diagnostic_hud_details'),
-                              padding: const EdgeInsets.only(top: 4),
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      'FPS: ${_currentFps > 0 ? _currentFps.toInt() : 60} fps  •  ',
-                                      style: const TextStyle(color: Colors.cyanAccent, fontSize: 11),
-                                    ),
-                                    Text(
-                                      'Bitrate: ${_currentBitrateMbps > 0 ? _currentBitrateMbps.toStringAsFixed(1) : '3.2'} Mbps  •  ',
-                                      style: const TextStyle(color: Colors.greenAccent, fontSize: 11),
-                                    ),
-                                    Text(
-                                      'Latency: $_rttLatencyMs ms  •  ',
-                                      style: const TextStyle(color: Colors.amberAccent, fontSize: 11),
-                                    ),
-                                    Text(
-                                      'Loss: ${_packetLossPercent.toStringAsFixed(1)}%',
-                                      style: const TextStyle(color: Colors.white70, fontSize: 11),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: NeobrutalTheme.ink,
+                              blurRadius: 0,
+                              offset: Offset(3, 3),
                             ),
                           ],
-                        ],
-                      ),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(2),
+                                    border: Border.all(
+                                      color: NeobrutalTheme.ink,
+                                      width: 1.5,
+                                    ),
+                                    color: !_isConnected
+                                        ? NeobrutalTheme.danger
+                                        : (!_isAuthenticated
+                                              ? NeobrutalTheme.yellow
+                                              : NeobrutalTheme.mint),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  !_isConnected
+                                      ? 'OFFLINE'
+                                      : (!_isAuthenticated
+                                            ? 'AUTH REQUIRED'
+                                            : 'LIVE (${_frameCount}f)'),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Icon(
+                                  _isDiagnosticExpanded
+                                      ? Icons.arrow_drop_up
+                                      : Icons.arrow_drop_down,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ],
+                            ),
+                            if (_isDiagnosticExpanded) ...[
+                              const SizedBox(height: 8),
+                              Container(
+                                key: const Key('diagnostic_hud_details'),
+                                padding: const EdgeInsets.only(top: 4),
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'FPS: ${_currentFps > 0 ? _currentFps.toInt() : 60} fps  •  ',
+                                        style: const TextStyle(
+                                          color: NeobrutalTheme.cyan,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Bitrate: ${_currentBitrateMbps > 0 ? _currentBitrateMbps.toStringAsFixed(1) : '3.2'} Mbps  •  ',
+                                        style: const TextStyle(
+                                          color: NeobrutalTheme.mint,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Latency: $_rttLatencyMs ms  •  ',
+                                        style: const TextStyle(
+                                          color: NeobrutalTheme.yellow,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Loss: ${_packetLossPercent.toStringAsFixed(1)}%',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
                   const Spacer(),
-                  IconButton.filledTonal(
-                    key: const Key('end_session_button'),
-                    icon: const Icon(Icons.power_settings_new, size: 18),
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.red.withOpacity(0.8),
-                      foregroundColor: Colors.white,
+                  Container(
+                    decoration: BoxDecoration(
+                      boxShadow: const [
+                        BoxShadow(
+                          color: NeobrutalTheme.ink,
+                          blurRadius: 0,
+                          offset: Offset(3, 3),
+                        ),
+                      ],
+                      borderRadius: BorderRadius.circular(
+                        NeobrutalTheme.radius,
+                      ),
                     ),
-                    tooltip: 'End Session',
-                    onPressed: _showEndSessionConfirmation,
+                    child: IconButton(
+                      key: const Key('end_session_button'),
+                      icon: const Icon(Icons.power_settings_new, size: 20),
+                      style: IconButton.styleFrom(
+                        backgroundColor: NeobrutalTheme.danger,
+                        foregroundColor: NeobrutalTheme.ink,
+                        side: const BorderSide(
+                          color: NeobrutalTheme.ink,
+                          width: NeobrutalTheme.compactBorderWidth,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            NeobrutalTheme.radius,
+                          ),
+                        ),
+                      ),
+                      tooltip: 'End Session',
+                      onPressed: _showEndSessionConfirmation,
+                    ),
                   ),
                 ],
               ),
@@ -1295,32 +1491,79 @@ class _MirrorViewState extends State<MirrorView> {
                     Container(
                       key: const Key('trackpad_mouse_buttons'),
                       margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: Colors.black87,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white24),
+                        color: const Color(0xFF1E1E24),
+                        borderRadius: BorderRadius.circular(
+                          NeobrutalTheme.radius,
+                        ),
+                        border: Border.all(
+                          color: NeobrutalTheme.ink,
+                          width: NeobrutalTheme.compactBorderWidth,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: NeobrutalTheme.ink,
+                            blurRadius: 0,
+                            offset: Offset(3, 3),
+                          ),
+                        ],
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           TextButton.icon(
                             key: const Key('trackpad_left_click_button'),
-                            icon: const Icon(Icons.mouse, size: 14, color: Colors.white70),
-                            label: const Text('L-Click', style: TextStyle(color: Colors.white, fontSize: 12)),
+                            icon: const Icon(
+                              Icons.mouse,
+                              size: 14,
+                              color: Colors.white,
+                            ),
+                            label: const Text(
+                              'L-Click',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                             onPressed: () {
-                              _sendInput({'type': 'mouse_click', 'button': 'left'});
+                              _sendInput({
+                                'type': 'mouse_click',
+                                'button': 'left',
+                              });
                             },
                           ),
                           const SizedBox(width: 4),
-                          Container(width: 1, height: 16, color: Colors.white24),
+                          Container(
+                            width: 2,
+                            height: 16,
+                            color: NeobrutalTheme.ink,
+                          ),
                           const SizedBox(width: 4),
                           TextButton.icon(
                             key: const Key('trackpad_right_click_button'),
-                            icon: const Icon(Icons.mouse, size: 14, color: Colors.white70),
-                            label: const Text('R-Click', style: TextStyle(color: Colors.white, fontSize: 12)),
+                            icon: const Icon(
+                              Icons.mouse,
+                              size: 14,
+                              color: Colors.white,
+                            ),
+                            label: const Text(
+                              'R-Click',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                             onPressed: () {
-                              _sendInput({'type': 'mouse_click', 'button': 'right'});
+                              _sendInput({
+                                'type': 'mouse_click',
+                                'button': 'right',
+                              });
                             },
                           ),
                         ],
@@ -1329,23 +1572,29 @@ class _MirrorViewState extends State<MirrorView> {
                   ],
 
                   if (_showShortcuts) ...[
-                    ShortcutBar(
-                      onShortcutPressed: _sendShortcut,
-                    ),
+                    ShortcutBar(onShortcutPressed: _sendShortcut),
                     const SizedBox(height: 10),
                   ],
                   Center(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
-                        color: Colors.black87,
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(color: Colors.white24),
-                        boxShadow: [
+                        color: const Color(0xFF1E1E24),
+                        borderRadius: BorderRadius.circular(
+                          NeobrutalTheme.radius,
+                        ),
+                        border: Border.all(
+                          color: NeobrutalTheme.ink,
+                          width: NeobrutalTheme.compactBorderWidth,
+                        ),
+                        boxShadow: const [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.4),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
+                            color: NeobrutalTheme.ink,
+                            blurRadius: 0,
+                            offset: Offset(3, 3),
                           ),
                         ],
                       ),
@@ -1356,9 +1605,13 @@ class _MirrorViewState extends State<MirrorView> {
                             key: const Key('input_mode_toggle_button'),
                             icon: Icon(
                               _isTrackpadMode ? Icons.mouse : Icons.touch_app,
-                              color: _isTrackpadMode ? Colors.cyanAccent : Colors.white,
+                              color: _isTrackpadMode
+                                  ? NeobrutalTheme.cyan
+                                  : Colors.white,
                             ),
-                            tooltip: _isTrackpadMode ? 'Switch to Direct Touch' : 'Switch to Trackpad Mode',
+                            tooltip: _isTrackpadMode
+                                ? 'Switch to Direct Touch'
+                                : 'Switch to Trackpad Mode',
                             onPressed: () {
                               setState(() {
                                 _isTrackpadMode = !_isTrackpadMode;
@@ -1377,7 +1630,7 @@ class _MirrorViewState extends State<MirrorView> {
                             icon: Icon(
                               Icons.keyboard,
                               color: _keyboardFocusNode.hasFocus
-                                  ? Theme.of(context).colorScheme.primary
+                                  ? NeobrutalTheme.yellow
                                   : Colors.white,
                             ),
                             tooltip: 'Toggle Soft Keyboard',
@@ -1388,7 +1641,7 @@ class _MirrorViewState extends State<MirrorView> {
                             icon: Icon(
                               Icons.grid_view,
                               color: _showShortcuts
-                                  ? Theme.of(context).colorScheme.primary
+                                  ? NeobrutalTheme.yellow
                                   : Colors.white,
                             ),
                             tooltip: 'Toggle Shortcuts Bar',
@@ -1397,10 +1650,16 @@ class _MirrorViewState extends State<MirrorView> {
                           const SizedBox(width: 2),
                           IconButton(
                             icon: Icon(
-                              _isAudioMuted ? Icons.volume_off : Icons.volume_up,
-                              color: _isAudioMuted ? Colors.redAccent : Colors.white,
+                              _isAudioMuted
+                                  ? Icons.volume_off
+                                  : Icons.volume_up,
+                              color: _isAudioMuted
+                                  ? NeobrutalTheme.danger
+                                  : Colors.white,
                             ),
-                            tooltip: _isAudioMuted ? 'Unmute Host Audio' : 'Mute Host Audio',
+                            tooltip: _isAudioMuted
+                                ? 'Unmute Host Audio'
+                                : 'Mute Host Audio',
                             onPressed: _toggleAudioMute,
                           ),
                           const SizedBox(width: 2),
@@ -1410,14 +1669,20 @@ class _MirrorViewState extends State<MirrorView> {
                               children: [
                                 Icon(
                                   Icons.content_paste,
-                                  color: _autoClipboardSync ? Colors.cyanAccent : Colors.white60,
+                                  color: _autoClipboardSync
+                                      ? NeobrutalTheme.cyan
+                                      : Colors.white60,
                                 ),
                                 if (_autoClipboardSync)
                                   Container(
-                                    width: 7,
-                                    height: 7,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.greenAccent,
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color: NeobrutalTheme.mint,
+                                      border: Border.all(
+                                        color: NeobrutalTheme.ink,
+                                        width: 1,
+                                      ),
                                       shape: BoxShape.circle,
                                     ),
                                   ),
@@ -1432,7 +1697,10 @@ class _MirrorViewState extends State<MirrorView> {
                           const SizedBox(width: 2),
                           IconButton(
                             key: const Key('file_manager_button'),
-                            icon: const Icon(Icons.folder_shared, color: Colors.amberAccent),
+                            icon: const Icon(
+                              Icons.folder_shared,
+                              color: NeobrutalTheme.yellow,
+                            ),
                             tooltip: 'File Transfer Manager',
                             onPressed: _openFileManager,
                           ),
@@ -1449,28 +1717,43 @@ class _MirrorViewState extends State<MirrorView> {
               Positioned.fill(
                 key: const Key('network_reconnect_overlay'),
                 child: Container(
-                  color: Colors.black87,
+                  color: Colors.black.withValues(alpha: 0.85),
                   child: Center(
-                    child: Padding(
+                    child: Container(
+                      margin: const EdgeInsets.all(24.0),
                       padding: const EdgeInsets.all(24.0),
+                      decoration: NeobrutalTheme.panel(
+                        color: NeobrutalTheme.paper,
+                      ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const CircularProgressIndicator(color: Colors.cyanAccent),
+                          const SizedBox(
+                            width: 32,
+                            height: 32,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              color: NeobrutalTheme.ink,
+                            ),
+                          ),
                           const SizedBox(height: 20),
                           const Text(
                             'Mencoba menghubungkan kembali...',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: NeobrutalTheme.ink,
                               fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w900,
                             ),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 8),
                           Text(
                             'Percobaan $_reconnectAttempts (Exponential Backoff)',
-                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                            style: const TextStyle(
+                              color: NeobrutalTheme.muted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ],
                       ),

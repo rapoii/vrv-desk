@@ -1,5 +1,8 @@
 import 'dart:math';
+
 import 'package:flutter/material.dart';
+
+import 'src/theme/neobrutalist_theme.dart';
 import 'src/views/home_view.dart';
 
 void main() {
@@ -28,24 +31,10 @@ class _VrvDeskAppState extends State<VrvDeskApp> {
     return MaterialApp(
       title: 'VrV Desk',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF4A68FF),
-          brightness: Brightness.light,
-        ),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF7B93FF),
-          brightness: Brightness.dark,
-        ),
-      ),
-      themeMode: ThemeMode.system,
-      home: HomeView(
-        myDeviceId: _myDeviceId,
-      ),
+      theme: NeobrutalTheme.light,
+      darkTheme: NeobrutalTheme.light,
+      themeMode: ThemeMode.light,
+      home: HomeView(myDeviceId: _myDeviceId),
     );
   }
 }

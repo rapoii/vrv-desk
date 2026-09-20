@@ -1,6 +1,9 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
+
 import '../services/file_transfer_service.dart';
+import '../theme/neobrutalist_theme.dart';
 
 class FileManagerView extends StatefulWidget {
   final FileTransferService service;
@@ -20,7 +23,8 @@ class FileManagerView extends StatefulWidget {
   State<FileManagerView> createState() => _FileManagerViewState();
 }
 
-class _FileManagerViewState extends State<FileManagerView> with SingleTickerProviderStateMixin {
+class _FileManagerViewState extends State<FileManagerView>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   String _localPath = '';
@@ -43,7 +47,9 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _localPath = widget.initialLocalPath.isNotEmpty ? widget.initialLocalPath : Directory.current.path;
+    _localPath = widget.initialLocalPath.isNotEmpty
+        ? widget.initialLocalPath
+        : Directory.current.path;
     _remotePath = widget.initialRemotePath;
 
     _loadLocalDirectory(_localPath);
@@ -72,7 +78,10 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
       setState(() => _isLoadingLocal = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error reading local dir: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Error reading local dir: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -94,7 +103,10 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
       setState(() => _isLoadingRemote = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error reading remote dir: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Error reading remote dir: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -112,12 +124,17 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
 
     // Standard Windows / POSIX up
     final separator = _remotePath.contains('\\') ? '\\' : '/';
-    final parts = _remotePath.split(separator).where((s) => s.isNotEmpty).toList();
+    final parts = _remotePath
+        .split(separator)
+        .where((s) => s.isNotEmpty)
+        .toList();
     if (parts.length <= 1) {
       _loadRemoteDirectory('roots');
     } else {
       parts.removeLast();
-      final upPath = parts.join(separator) + (parts.length == 1 && _remotePath.contains(':') ? separator : '');
+      final upPath =
+          parts.join(separator) +
+          (parts.length == 1 && _remotePath.contains(':') ? separator : '');
       _loadRemoteDirectory(upPath);
     }
   }
@@ -146,21 +163,28 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
           if (mounted) {
             setState(() {
               _transferProgress = progress;
-              _transferDetail = '${(progress * 100).toStringAsFixed(1)}% ($received / $total B)';
+              _transferDetail =
+                  '${(progress * 100).toStringAsFixed(1)}% ($received / $total B)';
             });
           }
         },
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Downloaded: ${remoteItem.name}'), backgroundColor: Colors.green),
+          SnackBar(
+            content: Text('Downloaded: ${remoteItem.name}'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
       _loadLocalDirectory(_localPath);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Download failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Download failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -192,21 +216,28 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
           if (mounted) {
             setState(() {
               _transferProgress = progress;
-              _transferDetail = '${(progress * 100).toStringAsFixed(1)}% ($sent / $total B)';
+              _transferDetail =
+                  '${(progress * 100).toStringAsFixed(1)}% ($sent / $total B)';
             });
           }
         },
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Uploaded: ${localItem.name}'), backgroundColor: Colors.green),
+          SnackBar(
+            content: Text('Uploaded: ${localItem.name}'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
       _loadRemoteDirectory(_remotePath);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Upload failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -226,8 +257,14 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
           autofocus: true,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Create')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Create'),
+          ),
         ],
       ),
     );
@@ -242,7 +279,12 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
         _loadRemoteDirectory(_remotePath);
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Create failed: $e'), backgroundColor: Colors.red));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Create failed: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       }
     } else {
@@ -253,7 +295,12 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
         _loadLocalDirectory(_localPath);
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Create failed: $e'), backgroundColor: Colors.red));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Create failed: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       }
     }
@@ -267,11 +314,19 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Delete ${item.isDir ? "Folder" : "File"}?'),
-        content: Text('Are you sure you want to permanently delete "${item.name}"?'),
+        content: Text(
+          'Are you sure you want to permanently delete "${item.name}"?',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(
+              backgroundColor: NeobrutalTheme.danger,
+              foregroundColor: NeobrutalTheme.ink,
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Delete'),
           ),
@@ -289,7 +344,12 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
         _loadRemoteDirectory(_remotePath);
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e'), backgroundColor: Colors.red));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Delete failed: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       }
     } else {
@@ -304,7 +364,12 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
         _loadLocalDirectory(_localPath);
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e'), backgroundColor: Colors.red));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Delete failed: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       }
     }
@@ -343,20 +408,39 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
             children: [
               // Middle Action Transfer Bar
               Container(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: const BoxDecoration(
+                  color: NeobrutalTheme.yellow,
+                  border: Border(
+                    bottom: BorderSide(
+                      color: NeobrutalTheme.ink,
+                      width: NeobrutalTheme.borderWidth,
+                    ),
+                  ),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      FilledButton.icon(
-                        onPressed: (_selectedRemoteEntry != null && !_selectedRemoteEntry!.isDir) ? _startDownload : null,
+                      ElevatedButton.icon(
+                        onPressed:
+                            (_selectedRemoteEntry != null &&
+                                !_selectedRemoteEntry!.isDir)
+                            ? _startDownload
+                            : null,
                         icon: const Icon(Icons.download, size: 18),
                         label: const Text('Download to Local'),
                       ),
                       const SizedBox(width: 8),
-                      FilledButton.icon(
-                        onPressed: (_selectedLocalEntry != null && !_selectedLocalEntry!.isDir) ? _startUpload : null,
+                      ElevatedButton.icon(
+                        onPressed:
+                            (_selectedLocalEntry != null &&
+                                !_selectedLocalEntry!.isDir)
+                            ? _startUpload
+                            : null,
                         icon: const Icon(Icons.upload, size: 18),
                         label: const Text('Upload to Remote'),
                       ),
@@ -364,8 +448,14 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
                       Text(
                         _selectedRemoteEntry != null
                             ? 'Remote: ${_selectedRemoteEntry!.name}'
-                            : (_selectedLocalEntry != null ? 'Local: ${_selectedLocalEntry!.name}' : ''),
-                        style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                            : (_selectedLocalEntry != null
+                                  ? 'Local: ${_selectedLocalEntry!.name}'
+                                  : ''),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: NeobrutalTheme.ink,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
@@ -387,14 +477,18 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
                               selectedEntry: _selectedLocalEntry,
                               isLoading: _isLoadingLocal,
                               onNavigateUp: _navigateLocalUp,
-                              onEntrySelected: (e) => setState(() => _selectedLocalEntry = e),
+                              onEntrySelected: (e) =>
+                                  setState(() => _selectedLocalEntry = e),
                               onEntryDoubleTap: (e) {
                                 if (e.isDir) {
                                   final sep = Platform.isWindows ? '\\' : '/';
-                                  _loadLocalDirectory('$_localPath$sep${e.name}');
+                                  _loadLocalDirectory(
+                                    '$_localPath$sep${e.name}',
+                                  );
                                 }
                               },
-                              onCreateFolder: () => _createNewFolderDialog(false),
+                              onCreateFolder: () =>
+                                  _createNewFolderDialog(false),
                               onDeleteItem: () => _deleteDialog(false),
                             ),
                           ),
@@ -408,14 +502,20 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
                               selectedEntry: _selectedRemoteEntry,
                               isLoading: _isLoadingRemote,
                               onNavigateUp: _navigateRemoteUp,
-                              onEntrySelected: (e) => setState(() => _selectedRemoteEntry = e),
+                              onEntrySelected: (e) =>
+                                  setState(() => _selectedRemoteEntry = e),
                               onEntryDoubleTap: (e) {
                                 if (e.isDir) {
-                                  final sep = _remotePath.contains('\\') ? '\\' : '/';
-                                  _loadRemoteDirectory('$_remotePath$sep${e.name}');
+                                  final sep = _remotePath.contains('\\')
+                                      ? '\\'
+                                      : '/';
+                                  _loadRemoteDirectory(
+                                    '$_remotePath$sep${e.name}',
+                                  );
                                 }
                               },
-                              onCreateFolder: () => _createNewFolderDialog(true),
+                              onCreateFolder: () =>
+                                  _createNewFolderDialog(true),
                               onDeleteItem: () => _deleteDialog(true),
                             ),
                           ),
@@ -432,7 +532,8 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
                             selectedEntry: _selectedLocalEntry,
                             isLoading: _isLoadingLocal,
                             onNavigateUp: _navigateLocalUp,
-                            onEntrySelected: (e) => setState(() => _selectedLocalEntry = e),
+                            onEntrySelected: (e) =>
+                                setState(() => _selectedLocalEntry = e),
                             onEntryDoubleTap: (e) {
                               if (e.isDir) {
                                 final sep = Platform.isWindows ? '\\' : '/';
@@ -450,11 +551,16 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
                             selectedEntry: _selectedRemoteEntry,
                             isLoading: _isLoadingRemote,
                             onNavigateUp: _navigateRemoteUp,
-                            onEntrySelected: (e) => setState(() => _selectedRemoteEntry = e),
+                            onEntrySelected: (e) =>
+                                setState(() => _selectedRemoteEntry = e),
                             onEntryDoubleTap: (e) {
                               if (e.isDir) {
-                                final sep = _remotePath.contains('\\') ? '\\' : '/';
-                                _loadRemoteDirectory('$_remotePath$sep${e.name}');
+                                final sep = _remotePath.contains('\\')
+                                    ? '\\'
+                                    : '/';
+                                _loadRemoteDirectory(
+                                  '$_remotePath$sep${e.name}',
+                                );
                               }
                             },
                             onCreateFolder: () => _createNewFolderDialog(true),
@@ -469,28 +575,66 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
           // Modal Transfer Progress Overlay
           if (_isTransferring)
             Container(
-              color: Colors.black54,
+              color: Colors.black.withValues(alpha: 0.6),
               alignment: Alignment.center,
-              child: Card(
-                elevation: 8,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const CircularProgressIndicator(),
-                      const SizedBox(height: 16),
-                      Text(_transferTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: 250,
-                        child: LinearProgressIndicator(value: _transferProgress),
+              child: Container(
+                margin: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(24.0),
+                decoration: NeobrutalTheme.panel(color: NeobrutalTheme.paper),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        color: NeobrutalTheme.ink,
                       ),
-                      const SizedBox(height: 8),
-                      Text(_transferDetail, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _transferTitle,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        color: NeobrutalTheme.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: 250,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: NeobrutalTheme.ink,
+                            width: NeobrutalTheme.compactBorderWidth,
+                          ),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(2),
+                          child: LinearProgressIndicator(
+                            value: _transferProgress,
+                            minHeight: 12,
+                            backgroundColor: NeobrutalTheme.surface,
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              NeobrutalTheme.cyan,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      _transferDetail,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: NeobrutalTheme.muted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -517,7 +661,15 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
         // Path navigation bar
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          color: Theme.of(context).colorScheme.surfaceContainer,
+          decoration: const BoxDecoration(
+            color: NeobrutalTheme.surface,
+            border: Border(
+              bottom: BorderSide(
+                color: NeobrutalTheme.ink,
+                width: NeobrutalTheme.borderWidth,
+              ),
+            ),
+          ),
           child: Row(
             children: [
               IconButton(
@@ -528,7 +680,11 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
               Expanded(
                 child: Text(
                   currentPath.isNotEmpty ? currentPath : 'Roots',
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -551,31 +707,65 @@ class _FileManagerViewState extends State<FileManagerView> with SingleTickerProv
           child: isLoading
               ? const Center(child: CircularProgressIndicator())
               : entries.isEmpty
-                  ? const Center(child: Text('Empty directory', style: TextStyle(color: Colors.grey)))
-                  : ListView.builder(
-                      itemCount: entries.length,
-                      itemBuilder: (context, index) {
-                        final entry = entries[index];
-                        final isSelected = selectedEntry?.name == entry.name;
+              ? const Center(
+                  child: Text(
+                    'Empty directory',
+                    style: TextStyle(
+                      color: NeobrutalTheme.muted,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) {
+                    final entry = entries[index];
+                    final isSelected = selectedEntry?.name == entry.name;
 
-                        return ListTile(
-                          selected: isSelected,
-                          selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withAlpha(80),
+                    return Container(
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: NeobrutalTheme.compactPanel(
+                        color: isSelected
+                            ? NeobrutalTheme.cyan
+                            : NeobrutalTheme.surface,
+                        shadow: isSelected,
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: ListTile(
                           dense: true,
                           leading: Icon(
-                            entry.isDir ? Icons.folder : _getFileIcon(entry.name),
-                            color: entry.isDir ? Colors.amber : Colors.blueGrey,
+                            entry.isDir
+                                ? Icons.folder
+                                : _getFileIcon(entry.name),
+                            color: NeobrutalTheme.ink,
                           ),
-                          title: Text(entry.name, style: const TextStyle(fontSize: 14)),
+                          title: Text(
+                            entry.name,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: NeobrutalTheme.ink,
+                            ),
+                          ),
                           trailing: Text(
                             entry.formattedSize,
-                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: NeobrutalTheme.muted,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                           onTap: () => onEntrySelected(entry),
                           onLongPress: () => onEntryDoubleTap(entry),
-                        );
-                      },
-                    ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
         ),
       ],
     );

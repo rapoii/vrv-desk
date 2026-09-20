@@ -3,7 +3,6 @@
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::*;
@@ -18,23 +17,26 @@ use mirror_core::host_service::{
 };
 use mirror_core::platform::windows_input::set_clipboard_text;
 
-// Colors
-const COLOR_BG: u32 = 0x0017120F; // #0F1217 in 0x00BBGGRR
-const COLOR_CARD: u32 = 0x002B211A; // #1A212B
-const COLOR_CARD_BORDER: u32 = 0x00453528; // #283545
-const COLOR_ACCENT_CYAN: u32 = 0x00E2B838; // #38B8E2
-const COLOR_ACCENT_GREEN: u32 = 0x006ED710; // #10D76E
-const COLOR_ACCENT_RED: u32 = 0x004545EF; // #EF4545
-const COLOR_TEXT_WHITE: u32 = 0x00F8FAFC;
-const COLOR_TEXT_MUTED: u32 = 0x009CA3AF;
-const COLOR_CONSOLE_BG: u32 = 0x00120E0A;
+// ============================================================================
+// Neobrutalist Design Tokens (COLORREF format: 0x00BBGGRR)
+// ============================================================================
+const COLOR_INK: u32 = 0x00111111; // #111111 - Hard black outlines & text
+const COLOR_PAPER: u32 = 0x00E8F7FF; // #FFF7E8 - Warm creamy background
+const COLOR_WHITE: u32 = 0x00FFFFFF; // #FFFFFF - Card surface
+const COLOR_YELLOW: u32 = 0x0047D4FF; // #FFD447 - Primary accent
+const COLOR_CYAN: u32 = 0x00FFD670; // #70D6FF - Secondary accent
+const COLOR_PINK: u32 = 0x00A670FF; // #FF70A6 - Accent badges / highlights
+const COLOR_MINT: u32 = 0x00A8F17B; // #7BF1A8 - Success / Active accent
+const COLOR_DANGER: u32 = 0x005C5CFF; // #FF5C5C - Warning / Stop accent
+const COLOR_MUTED: u32 = 0x005B5B5B; // #5B5B5B - Secondary text
+const COLOR_CONSOLE_BG: u32 = 0x00111111; // #111111 - Terminal ink background
 
 struct AppState {
     device_id: String,
     pin: Arc<std::sync::RwLock<String>>,
     unattended: Arc<std::sync::RwLock<mirror_core::unattended::UnattendedConfig>>,
     is_elevated: bool,
-    host_name: String,
+    _host_name: String,
     telemetry: HostTelemetry,
     is_sharing: Arc<AtomicBool>,
     hover_button: Option<u32>,
@@ -44,6 +46,7 @@ struct AppState {
 }
 
 static mut APP_STATE: Option<AppState> = None;
+static EDIT_BG_BRUSH: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
 // Button IDs for hit testing
 const BTN_COPY_ID: u32 = 1;
@@ -54,14 +57,49 @@ const BTN_CLEAR_LOG: u32 = 5;
 const BTN_UNATTENDED: u32 = 6;
 const BTN_ELEVATE: u32 = 7;
 
-// Button Rectangles
-const RECT_BTN_COPY_ID: RECT = RECT { left: 420, top: 135, right: 510, bottom: 175 };
-const RECT_BTN_NEW_PIN: RECT = RECT { left: 420, top: 195, right: 510, bottom: 235 };
-const RECT_BTN_TOGGLE_HOST: RECT = RECT { left: 45, top: 255, right: 230, bottom: 295 };
-const RECT_BTN_UNATTENDED: RECT = RECT { left: 245, top: 255, right: 510, bottom: 295 };
-const RECT_BTN_CONNECT: RECT = RECT { left: 565, top: 255, right: 835, bottom: 295 };
-const RECT_BTN_CLEAR_LOG: RECT = RECT { left: 745, top: 405, right: 835, bottom: 430 };
-const RECT_BTN_ELEVATE: RECT = RECT { left: 495, top: 22, right: 615, bottom: 52 };
+// Button Rectangles (Consistent with Layout & Hit Testing)
+const RECT_BTN_COPY_ID: RECT = RECT {
+    left: 420,
+    top: 135,
+    right: 510,
+    bottom: 175,
+};
+const RECT_BTN_NEW_PIN: RECT = RECT {
+    left: 420,
+    top: 195,
+    right: 510,
+    bottom: 235,
+};
+const RECT_BTN_TOGGLE_HOST: RECT = RECT {
+    left: 45,
+    top: 255,
+    right: 230,
+    bottom: 295,
+};
+const RECT_BTN_UNATTENDED: RECT = RECT {
+    left: 245,
+    top: 255,
+    right: 510,
+    bottom: 295,
+};
+const RECT_BTN_CONNECT: RECT = RECT {
+    left: 565,
+    top: 255,
+    right: 835,
+    bottom: 295,
+};
+const RECT_BTN_CLEAR_LOG: RECT = RECT {
+    left: 745,
+    top: 405,
+    right: 835,
+    bottom: 430,
+};
+const RECT_BTN_ELEVATE: RECT = RECT {
+    left: 495,
+    top: 22,
+    right: 615,
+    bottom: 52,
+};
 
 fn point_in_rect(pt: POINT, r: RECT) -> bool {
     pt.x >= r.left && pt.x <= r.right && pt.y >= r.top && pt.y <= r.bottom
@@ -70,8 +108,8 @@ fn point_in_rect(pt: POINT, r: RECT) -> bool {
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         WM_CREATE => {
-            // Enable Windows 11 Dark Mode Title Bar
-            let dark_mode: BOOL = BOOL(1);
+            // Set Windows 11 Light Mode Title Bar to match creamy paper background
+            let dark_mode: BOOL = BOOL(0);
             let _ = DwmSetWindowAttribute(
                 hwnd,
                 DWMWINDOWATTRIBUTE(20), // DWMWA_USE_IMMERSIVE_DARK_MODE
@@ -113,6 +151,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 hinstance,
                 None,
             );
+
+            // Set bold clean Segoe UI font on native edit controls
+            let edit_font = make_font(15, FW_BOLD.0 as i32, w!("Segoe UI"));
+            let _ = SendMessageW(edit_id, WM_SETFONT, WPARAM(edit_font.0 as _), LPARAM(1));
+            let _ = SendMessageW(edit_pin, WM_SETFONT, WPARAM(edit_font.0 as _), LPARAM(1));
 
             if let Some(ref mut state) = APP_STATE {
                 state.hwnd = hwnd;
@@ -171,18 +214,25 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 if point_in_rect(pt, RECT_BTN_COPY_ID) {
                     let id_clean = state.device_id.replace(' ', "");
                     set_clipboard_text(&id_clean);
-                    state.telemetry.add_log(format!("Device ID ({}) copied to clipboard!", id_clean));
+                    state
+                        .telemetry
+                        .add_log(format!("Device ID ({}) copied to clipboard!", id_clean));
                     InvalidateRect(hwnd, None, BOOL(0));
                 } else if point_in_rect(pt, RECT_BTN_NEW_PIN) {
                     let new_pin = get_or_generate_pin(None);
                     *state.pin.write().unwrap() = new_pin.clone();
-                    state.telemetry.add_log(format!("New PIN generated: {}", format_six_digit_display(&new_pin)));
+                    state.telemetry.add_log(format!(
+                        "New PIN generated: {}",
+                        format_six_digit_display(&new_pin)
+                    ));
                     InvalidateRect(hwnd, None, BOOL(0));
                 } else if point_in_rect(pt, RECT_BTN_TOGGLE_HOST) {
                     let current = state.is_sharing.load(Ordering::Relaxed);
                     state.is_sharing.store(!current, Ordering::Relaxed);
                     let status = if !current { "resumed" } else { "paused" };
-                    state.telemetry.add_log(format!("Screen Sharing is now {}", status));
+                    state
+                        .telemetry
+                        .add_log(format!("Screen Sharing is now {}", status));
                     InvalidateRect(hwnd, None, BOOL(0));
                 } else if point_in_rect(pt, RECT_BTN_UNATTENDED) {
                     let mut cfg = state.unattended.write().unwrap();
@@ -192,8 +242,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                         cfg.set_password("vrv2026");
                     }
                     let _ = cfg.save();
-                    let status = if new_state { "ENABLED (Pass: vrv2026)" } else { "DISABLED" };
-                    state.telemetry.add_log(format!("Unattended Access is now {}", status));
+                    let status = if new_state {
+                        "ENABLED (Pass: vrv2026)"
+                    } else {
+                        "DISABLED"
+                    };
+                    state
+                        .telemetry
+                        .add_log(format!("Unattended Access is now {}", status));
                     InvalidateRect(hwnd, None, BOOL(0));
                 } else if point_in_rect(pt, RECT_BTN_CLEAR_LOG) {
                     if let Ok(mut logs) = state.telemetry.log_messages.write() {
@@ -201,11 +257,15 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     }
                     InvalidateRect(hwnd, None, BOOL(0));
                 } else if point_in_rect(pt, RECT_BTN_CONNECT) {
-                    state.telemetry.add_log("Connecting to remote device...".to_string());
+                    state
+                        .telemetry
+                        .add_log("Connecting to remote device...".to_string());
                     InvalidateRect(hwnd, None, BOOL(0));
                 } else if point_in_rect(pt, RECT_BTN_ELEVATE) {
                     if !state.is_elevated {
-                        state.telemetry.add_log("Requesting Administrator UAC Elevation...".to_string());
+                        state
+                            .telemetry
+                            .add_log("Requesting Administrator UAC Elevation...".to_string());
                         let _ = mirror_core::service_manager::request_elevation(None, None);
                         let _ = PostMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
                     }
@@ -215,11 +275,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             LRESULT(0)
         }
 
-        WM_CTLCOLOREDIT => {
+        WM_CTLCOLOREDIT | WM_CTLCOLORSTATIC => {
             let hdc = HDC(wparam.0 as _);
-            SetTextColor(hdc, COLORREF(COLOR_TEXT_WHITE));
-            SetBkColor(hdc, COLORREF(COLOR_CONSOLE_BG));
-            let brush = CreateSolidBrush(COLORREF(COLOR_CONSOLE_BG));
+            SetTextColor(hdc, COLORREF(COLOR_INK));
+            SetBkColor(hdc, COLORREF(COLOR_WHITE));
+            let brush_raw = EDIT_BG_BRUSH.load(Ordering::Relaxed);
+            let brush = if brush_raw == 0 {
+                let created = CreateSolidBrush(COLORREF(COLOR_WHITE));
+                EDIT_BG_BRUSH.store(created.0 as isize, Ordering::Relaxed);
+                created
+            } else {
+                HBRUSH(brush_raw as _)
+            };
             LRESULT(brush.0 as _)
         }
 
@@ -229,7 +296,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
 
             // Double buffering to eliminate all flicker
             let mut client_rect = RECT::default();
-            GetClientRect(hwnd, &mut client_rect);
+            let _ = GetClientRect(hwnd, &mut client_rect);
             let width = client_rect.right - client_rect.left;
             let height = client_rect.bottom - client_rect.top;
 
@@ -237,8 +304,8 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             let mem_bmp = CreateCompatibleBitmap(hdc, width, height);
             let old_bmp = SelectObject(mem_dc, mem_bmp);
 
-            // Paint background
-            let bg_brush = CreateSolidBrush(COLORREF(COLOR_BG));
+            // Paint background with paper color (#FFF7E8)
+            let bg_brush = CreateSolidBrush(COLORREF(COLOR_PAPER));
             FillRect(mem_dc, &client_rect, bg_brush);
             DeleteObject(bg_brush);
 
@@ -246,7 +313,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 render_gui(mem_dc, width, height, state);
             }
 
-            BitBlt(hdc, 0, 0, width, height, mem_dc, 0, 0, SRCCOPY);
+            let _ = BitBlt(hdc, 0, 0, width, height, mem_dc, 0, 0, SRCCOPY);
 
             SelectObject(mem_dc, old_bmp);
             DeleteObject(mem_bmp);
@@ -257,6 +324,10 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         }
 
         WM_DESTROY => {
+            let brush_raw = EDIT_BG_BRUSH.swap(0, Ordering::Relaxed);
+            if brush_raw != 0 {
+                DeleteObject(HBRUSH(brush_raw as _));
+            }
             PostQuitMessage(0);
             LRESULT(0)
         }
@@ -267,7 +338,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
 
 unsafe fn make_font(height: i32, weight: i32, face: PCWSTR) -> HFONT {
     CreateFontW(
-        height, 0, 0, 0, weight, 0, 0, 0,
+        height,
+        0,
+        0,
+        0,
+        weight,
+        0,
+        0,
+        0,
         DEFAULT_CHARSET.0 as u32,
         OUT_DEFAULT_PRECIS.0 as u32,
         CLIP_DEFAULT_PRECIS.0 as u32,
@@ -277,24 +355,163 @@ unsafe fn make_font(height: i32, weight: i32, face: PCWSTR) -> HFONT {
     )
 }
 
-unsafe fn draw_rounded_card(hdc: HDC, rect: &RECT, bg_color: u32, border_color: u32) {
-    let brush = CreateSolidBrush(COLORREF(bg_color));
-    let pen = CreatePen(PS_SOLID, 1, COLORREF(border_color));
-    let old_brush = SelectObject(hdc, brush);
-    let old_pen = SelectObject(hdc, pen);
+/// Draws a Neobrutalist card with crisp ink outline and hard offset shadow (blur = 0).
+unsafe fn draw_card(
+    hdc: HDC,
+    rect: &RECT,
+    bg_color: u32,
+    border_color: u32,
+    border_width: i32,
+    shadow_offset: i32,
+    corner_radius: i32,
+) {
+    // 1. Draw hard shadow if offset > 0
+    if shadow_offset > 0 {
+        let shadow_brush = CreateSolidBrush(COLORREF(COLOR_INK));
+        let shadow_pen = CreatePen(PS_SOLID, 1, COLORREF(COLOR_INK));
+        let old_brush = SelectObject(hdc, shadow_brush);
+        let old_pen = SelectObject(hdc, shadow_pen);
 
-    RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, 12, 12);
+        RoundRect(
+            hdc,
+            rect.left + shadow_offset,
+            rect.top + shadow_offset,
+            rect.right + shadow_offset,
+            rect.bottom + shadow_offset,
+            corner_radius,
+            corner_radius,
+        );
+
+        SelectObject(hdc, old_brush);
+        SelectObject(hdc, old_pen);
+        DeleteObject(shadow_brush);
+        DeleteObject(shadow_pen);
+    }
+
+    // 2. Draw front card surface
+    let fill_brush = CreateSolidBrush(COLORREF(bg_color));
+    let border_pen = CreatePen(PS_INSIDEFRAME, border_width, COLORREF(border_color));
+    let old_brush = SelectObject(hdc, fill_brush);
+    let old_pen = SelectObject(hdc, border_pen);
+
+    RoundRect(
+        hdc,
+        rect.left,
+        rect.top,
+        rect.right,
+        rect.bottom,
+        corner_radius,
+        corner_radius,
+    );
 
     SelectObject(hdc, old_brush);
     SelectObject(hdc, old_pen);
-    DeleteObject(brush);
-    DeleteObject(pen);
+    DeleteObject(fill_brush);
+    DeleteObject(border_pen);
 }
 
-unsafe fn draw_button(hdc: HDC, rect: &RECT, text: &str, bg_color: u32, text_color: u32) {
-    draw_rounded_card(hdc, rect, bg_color, bg_color);
+/// Draws an interactive Neobrutalist button with physical tactile shift, outline, and accent fill.
+unsafe fn draw_button(
+    hdc: HDC,
+    rect: &RECT,
+    text: &str,
+    bg_color: u32,
+    hover_bg_color: u32,
+    text_color: u32,
+    is_hovered: bool,
+    font: HFONT,
+) {
+    // Physical interaction:
+    // Rest: face at (0, 0), shadow at (+4, +4)
+    // Hover: face shifts (+2, +2) towards shadow, remaining shadow is 2px, accent fill
+    let (shift_x, shift_y, shadow_offset, fill_color) = if is_hovered {
+        (2, 2, 2, hover_bg_color)
+    } else {
+        (0, 0, 4, bg_color)
+    };
+
+    let face_rect = RECT {
+        left: rect.left + shift_x,
+        top: rect.top + shift_y,
+        right: rect.right + shift_x,
+        bottom: rect.bottom + shift_y,
+    };
+
+    // Draw shadow
+    if shadow_offset > 0 {
+        let shadow_brush = CreateSolidBrush(COLORREF(COLOR_INK));
+        let shadow_pen = CreatePen(PS_SOLID, 1, COLORREF(COLOR_INK));
+        let old_brush = SelectObject(hdc, shadow_brush);
+        let old_pen = SelectObject(hdc, shadow_pen);
+
+        RoundRect(
+            hdc,
+            face_rect.left + shadow_offset,
+            face_rect.top + shadow_offset,
+            face_rect.right + shadow_offset,
+            face_rect.bottom + shadow_offset,
+            6,
+            6,
+        );
+
+        SelectObject(hdc, old_brush);
+        SelectObject(hdc, old_pen);
+        DeleteObject(shadow_brush);
+        DeleteObject(shadow_pen);
+    }
+
+    // Draw face
+    let fill_brush = CreateSolidBrush(COLORREF(fill_color));
+    let border_pen = CreatePen(PS_INSIDEFRAME, 3, COLORREF(COLOR_INK));
+    let old_brush = SelectObject(hdc, fill_brush);
+    let old_pen = SelectObject(hdc, border_pen);
+
+    RoundRect(
+        hdc,
+        face_rect.left,
+        face_rect.top,
+        face_rect.right,
+        face_rect.bottom,
+        6,
+        6,
+    );
+
+    SelectObject(hdc, old_brush);
+    SelectObject(hdc, old_pen);
+    DeleteObject(fill_brush);
+    DeleteObject(border_pen);
+
+    // Draw text inside face
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, COLORREF(text_color));
+    let old_font = SelectObject(hdc, font);
+
+    let mut w_text: Vec<u16> = text.encode_utf16().collect();
+    let mut text_rect = face_rect;
+    DrawTextW(
+        hdc,
+        &mut w_text,
+        &mut text_rect,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+    );
+
+    SelectObject(hdc, old_font);
+}
+
+/// Draws a Neobrutalist status pill badge (outline + shadow + explicit badge text).
+unsafe fn draw_status_pill(
+    hdc: HDC,
+    rect: &RECT,
+    text: &str,
+    bg_color: u32,
+    text_color: u32,
+    font: HFONT,
+) {
+    draw_card(hdc, rect, bg_color, COLOR_INK, 2, 3, 6);
+
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, COLORREF(text_color));
+    let old_font = SelectObject(hdc, font);
 
     let mut w_text: Vec<u16> = text.encode_utf16().collect();
     let mut text_rect = *rect;
@@ -304,230 +521,546 @@ unsafe fn draw_button(hdc: HDC, rect: &RECT, text: &str, bg_color: u32, text_col
         &mut text_rect,
         DT_CENTER | DT_VCENTER | DT_SINGLELINE,
     );
+
+    SelectObject(hdc, old_font);
 }
 
 unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     SetBkMode(hdc, TRANSPARENT);
 
+    // Instantiate typography hierarchy using native system fonts
+    let font_title = make_font(28, 900, w!("Arial Black"));
+    let font_badge = make_font(12, FW_BOLD.0 as i32, w!("Segoe UI"));
+    let font_subtitle = make_font(13, FW_BOLD.0 as i32, w!("Segoe UI"));
+    let font_card_header = make_font(16, 900, w!("Arial Black"));
+    let font_label = make_font(12, FW_BOLD.0 as i32, w!("Segoe UI"));
+    let font_giant_id = make_font(28, 900, w!("Arial Black"));
+    let font_giant_pin = make_font(24, 900, w!("Arial Black"));
+    let font_btn = make_font(13, FW_BOLD.0 as i32, w!("Segoe UI"));
+    let font_btn_lg = make_font(14, 900, w!("Segoe UI"));
+    let font_console = make_font(13, FW_NORMAL.0 as i32, w!("Consolas"));
+    let font_footer = make_font(12, FW_BOLD.0 as i32, w!("Segoe UI"));
+
+    // ------------------------------------------------------------------------
     // 1. Header Area
-    // Logo and Title
-    let font_title = make_font(26, FW_BOLD.0 as i32, w!("Segoe UI"));
+    // ------------------------------------------------------------------------
     let old_font = SelectObject(hdc, font_title);
-    SetTextColor(hdc, COLORREF(COLOR_TEXT_WHITE));
-    let mut title_rect = RECT { left: 25, top: 15, right: 300, bottom: 45 };
-    let mut title_str: Vec<u16> = "VrV Desk".encode_utf16().collect();
-    DrawTextW(hdc, &mut title_str, &mut title_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    SetTextColor(hdc, COLORREF(COLOR_INK));
+    let mut title_rect = RECT {
+        left: 25,
+        top: 15,
+        right: 215,
+        bottom: 47,
+    };
+    let mut title_str: Vec<u16> = "VRV DESK".encode_utf16().collect();
+    DrawTextW(
+        hdc,
+        &mut title_str,
+        &mut title_rect,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+    );
 
-    let font_subtitle = make_font(14, FW_NORMAL.0 as i32, w!("Segoe UI"));
+    // Accent Edition Tag next to Title
+    let tag_rect = RECT {
+        left: 200,
+        top: 20,
+        right: 275,
+        bottom: 42,
+    };
+    draw_card(hdc, &tag_rect, COLOR_YELLOW, COLOR_INK, 2, 2, 4);
+    SelectObject(hdc, font_badge);
+    SetTextColor(hdc, COLORREF(COLOR_INK));
+    let mut tag_text: Vec<u16> = "DESKTOP".encode_utf16().collect();
+    let mut tag_draw_rect = tag_rect;
+    DrawTextW(
+        hdc,
+        &mut tag_text,
+        &mut tag_draw_rect,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+    );
+
+    // Subtitle
     SelectObject(hdc, font_subtitle);
-    SetTextColor(hdc, COLORREF(COLOR_TEXT_MUTED));
-    let mut sub_rect = RECT { left: 25, top: 45, right: 450, bottom: 65 };
-    let mut sub_str: Vec<u16> = "Ultra-low latency Remote Desktop & Screen Mirror".encode_utf16().collect();
-    DrawTextW(hdc, &mut sub_str, &mut sub_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    SetTextColor(hdc, COLORREF(COLOR_MUTED));
+    let mut sub_rect = RECT {
+        left: 25,
+        top: 48,
+        right: 480,
+        bottom: 68,
+    };
+    let mut sub_str: Vec<u16> = "Ultra-low latency Remote Desktop & Screen Mirror"
+        .encode_utf16()
+        .collect();
+    DrawTextW(
+        hdc,
+        &mut sub_str,
+        &mut sub_rect,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+    );
 
-    // Header Status Pill
+    // Admin / Elevation Pill Button
+    let (elev_text, elev_bg, elev_hover) = if state.is_elevated {
+        ("[ADMIN] ELEVATED", COLOR_MINT, COLOR_CYAN)
+    } else {
+        ("[UAC] ELEVATE", COLOR_YELLOW, COLOR_CYAN)
+    };
+    let is_elev_hover = state.hover_button == Some(BTN_ELEVATE);
+    draw_button(
+        hdc,
+        &RECT_BTN_ELEVATE,
+        elev_text,
+        elev_bg,
+        elev_hover,
+        COLOR_INK,
+        is_elev_hover,
+        font_btn,
+    );
+
+    // Header Status Pill (Shape + Text + Color, never color alone)
     let is_conn = state.telemetry.is_connected.load(Ordering::Relaxed);
     let is_sharing = state.is_sharing.load(Ordering::Relaxed);
-    let (pill_text, pill_bg, pill_fg) = if is_conn {
-        ("● CONNECTED", 0x00332210, COLOR_ACCENT_CYAN)
+    let (pill_text, pill_bg) = if is_conn {
+        ("[● LIVE] CONNECTED", COLOR_CYAN)
     } else if is_sharing {
-        ("● READY FOR CONNECTIONS", 0x001B2B15, COLOR_ACCENT_GREEN)
+        ("[● READY] SHARING ACTIVE", COLOR_MINT)
     } else {
-        ("● SHARING PAUSED", 0x001A1A33, COLOR_ACCENT_RED)
+        ("[■ PAUSED] SHARING STOPPED", COLOR_DANGER)
     };
-    let pill_rect = RECT { left: 630, top: 22, right: 835, bottom: 52 };
-    draw_button(hdc, &pill_rect, pill_text, pill_bg, pill_fg);
-
-    // Admin / Elevation Pill
-    let (elev_text, elev_bg, elev_fg) = if state.is_elevated {
-        ("🛡️ ADMIN", 0x001B2B15, COLOR_ACCENT_GREEN)
-    } else {
-        ("▲ ELEVATE", 0x002A2010, 0x00E2B838)
+    let pill_rect = RECT {
+        left: 625,
+        top: 22,
+        right: 855,
+        bottom: 52,
     };
-    draw_button(hdc, &RECT_BTN_ELEVATE, elev_text, elev_bg, elev_fg);
+    draw_status_pill(hdc, &pill_rect, pill_text, pill_bg, COLOR_INK, font_btn);
 
+    // ------------------------------------------------------------------------
     // 2. Main Action Cards
+    // ------------------------------------------------------------------------
     // Left Card: This Device (Host)
-    let card_host = RECT { left: 25, top: 85, right: 535, bottom: 310 };
-    draw_rounded_card(hdc, &card_host, COLOR_CARD, COLOR_CARD_BORDER);
+    let card_host = RECT {
+        left: 25,
+        top: 85,
+        right: 535,
+        bottom: 310,
+    };
+    draw_card(hdc, &card_host, COLOR_WHITE, COLOR_INK, 3, 4, 6);
 
-    let font_bold = make_font(16, FW_SEMIBOLD.0 as i32, w!("Segoe UI"));
-    SelectObject(hdc, font_bold);
-    SetTextColor(hdc, COLORREF(COLOR_TEXT_WHITE));
-    let mut host_header_rect = RECT { left: 45, top: 100, right: 500, bottom: 120 };
-    let mut host_header: Vec<u16> = "Your Computer (This Device)".encode_utf16().collect();
-    DrawTextW(hdc, &mut host_header, &mut host_header_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(hdc, font_card_header);
+    SetTextColor(hdc, COLORREF(COLOR_INK));
+    let mut host_header_rect = RECT {
+        left: 45,
+        top: 98,
+        right: 515,
+        bottom: 122,
+    };
+    let mut host_header: Vec<u16> = "THIS COMPUTER (HOST ENGINE)".encode_utf16().collect();
+    DrawTextW(
+        hdc,
+        &mut host_header,
+        &mut host_header_rect,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+    );
 
-    // Device ID Label & Large Number
-    SelectObject(hdc, font_subtitle);
-    SetTextColor(hdc, COLORREF(COLOR_TEXT_MUTED));
-    let mut id_lbl_rect = RECT { left: 45, top: 130, right: 300, bottom: 148 };
-    let mut id_lbl: Vec<u16> = "Your 6-Digit Device ID".encode_utf16().collect();
-    DrawTextW(hdc, &mut id_lbl, &mut id_lbl_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    // Device ID Section
+    SelectObject(hdc, font_label);
+    SetTextColor(hdc, COLORREF(COLOR_MUTED));
+    let mut id_lbl_rect = RECT {
+        left: 45,
+        top: 126,
+        right: 350,
+        bottom: 142,
+    };
+    let mut id_lbl: Vec<u16> = "[ID] YOUR 6-DIGIT DEVICE ID".encode_utf16().collect();
+    DrawTextW(
+        hdc,
+        &mut id_lbl,
+        &mut id_lbl_rect,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+    );
 
-    let font_giant = make_font(32, FW_BOLD.0 as i32, w!("Segoe UI"));
-    SelectObject(hdc, font_giant);
-    SetTextColor(hdc, COLORREF(COLOR_ACCENT_CYAN));
+    // ID Container Box
+    let id_box_rect = RECT {
+        left: 45,
+        top: 144,
+        right: 405,
+        bottom: 182,
+    };
+    draw_card(hdc, &id_box_rect, COLOR_PAPER, COLOR_INK, 2, 2, 4);
+
+    SelectObject(hdc, font_giant_id);
+    SetTextColor(hdc, COLORREF(COLOR_INK));
     let formatted_id = format_six_digit_display(&state.device_id);
-    let mut id_val_rect = RECT { left: 45, top: 145, right: 350, bottom: 185 };
+    let mut id_val_rect = RECT {
+        left: 55,
+        top: 144,
+        right: 395,
+        bottom: 182,
+    };
     let mut id_val: Vec<u16> = formatted_id.encode_utf16().collect();
-    DrawTextW(hdc, &mut id_val, &mut id_val_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    DrawTextW(
+        hdc,
+        &mut id_val,
+        &mut id_val_rect,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+    );
 
     // Copy ID Button
-    let copy_bg = if state.hover_button == Some(BTN_COPY_ID) { 0x003D2E24 } else { 0x002B211A };
-    draw_button(hdc, &RECT_BTN_COPY_ID, "Copy ID", copy_bg, COLOR_ACCENT_CYAN);
+    let is_copy_hover = state.hover_button == Some(BTN_COPY_ID);
+    draw_button(
+        hdc,
+        &RECT_BTN_COPY_ID,
+        "COPY",
+        COLOR_CYAN,
+        COLOR_YELLOW,
+        COLOR_INK,
+        is_copy_hover,
+        font_btn,
+    );
 
-    // PIN Label & Value
-    SelectObject(hdc, font_subtitle);
-    SetTextColor(hdc, COLORREF(COLOR_TEXT_MUTED));
-    let mut pin_lbl_rect = RECT { left: 45, top: 190, right: 300, bottom: 208 };
-    let mut pin_lbl: Vec<u16> = "One-Time Dynamic PIN".encode_utf16().collect();
-    DrawTextW(hdc, &mut pin_lbl, &mut pin_lbl_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    // PIN Section
+    SelectObject(hdc, font_label);
+    SetTextColor(hdc, COLORREF(COLOR_MUTED));
+    let mut pin_lbl_rect = RECT {
+        left: 45,
+        top: 188,
+        right: 350,
+        bottom: 204,
+    };
+    let mut pin_lbl: Vec<u16> = "[PIN] ONE-TIME DYNAMIC ACCESS PIN".encode_utf16().collect();
+    DrawTextW(
+        hdc,
+        &mut pin_lbl,
+        &mut pin_lbl_rect,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+    );
+
+    // PIN Container Box
+    let pin_box_rect = RECT {
+        left: 45,
+        top: 204,
+        right: 405,
+        bottom: 242,
+    };
+    draw_card(hdc, &pin_box_rect, COLOR_PAPER, COLOR_INK, 2, 2, 4);
 
     let current_pin = { state.pin.read().unwrap().clone() };
     let formatted_pin = format_six_digit_display(&current_pin);
-    let font_pin = make_font(22, FW_BOLD.0 as i32, w!("Segoe UI"));
-    SelectObject(hdc, font_pin);
-    SetTextColor(hdc, COLORREF(COLOR_TEXT_WHITE));
-    let mut pin_val_rect = RECT { left: 45, top: 205, right: 350, bottom: 240 };
+    SelectObject(hdc, font_giant_pin);
+    SetTextColor(hdc, COLORREF(COLOR_INK));
+    let mut pin_val_rect = RECT {
+        left: 55,
+        top: 204,
+        right: 395,
+        bottom: 242,
+    };
     let mut pin_val: Vec<u16> = formatted_pin.encode_utf16().collect();
-    DrawTextW(hdc, &mut pin_val, &mut pin_val_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    DrawTextW(
+        hdc,
+        &mut pin_val,
+        &mut pin_val_rect,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+    );
 
     // New PIN Button
-    let new_pin_bg = if state.hover_button == Some(BTN_NEW_PIN) { 0x003D2E24 } else { 0x002B211A };
-    draw_button(hdc, &RECT_BTN_NEW_PIN, "New PIN", new_pin_bg, COLOR_TEXT_WHITE);
+    let is_new_pin_hover = state.hover_button == Some(BTN_NEW_PIN);
+    draw_button(
+        hdc,
+        &RECT_BTN_NEW_PIN,
+        "NEW PIN",
+        COLOR_WHITE,
+        COLOR_CYAN,
+        COLOR_INK,
+        is_new_pin_hover,
+        font_btn,
+    );
 
     // Toggle Sharing Button
-    let (toggle_text, toggle_bg, toggle_fg) = if is_sharing {
-        ("■ Stop Sharing", 0x00222238, COLOR_ACCENT_RED)
+    let (toggle_text, toggle_bg, toggle_hover, toggle_fg) = if is_sharing {
+        ("■ STOP SHARING", COLOR_DANGER, COLOR_PINK, COLOR_INK)
     } else {
-        ("▶ Start Sharing", 0x001B2B15, COLOR_ACCENT_GREEN)
+        ("▶ START SHARING", COLOR_MINT, COLOR_YELLOW, COLOR_INK)
     };
-    draw_button(hdc, &RECT_BTN_TOGGLE_HOST, toggle_text, toggle_bg, toggle_fg);
+    let is_toggle_hover = state.hover_button == Some(BTN_TOGGLE_HOST);
+    draw_button(
+        hdc,
+        &RECT_BTN_TOGGLE_HOST,
+        toggle_text,
+        toggle_bg,
+        toggle_hover,
+        toggle_fg,
+        is_toggle_hover,
+        font_btn,
+    );
 
     // Unattended Access Button
     let is_unattended = state.unattended.read().unwrap().enabled;
-    let (unattended_text, unattended_bg, unattended_fg) = if is_unattended {
-        ("🔑 Unattended: ON", 0x001B2B15, COLOR_ACCENT_GREEN)
+    let (unattended_text, unattended_bg, unattended_hover) = if is_unattended {
+        ("🔑 UNATTENDED: ON", COLOR_MINT, COLOR_YELLOW)
     } else {
-        ("🔒 Unattended: OFF", if state.hover_button == Some(BTN_UNATTENDED) { 0x003D2E24 } else { 0x002B211A }, COLOR_TEXT_MUTED)
+        ("🔒 UNATTENDED: OFF", COLOR_WHITE, COLOR_CYAN)
     };
-    draw_button(hdc, &RECT_BTN_UNATTENDED, unattended_text, unattended_bg, unattended_fg);
+    let is_unattended_hover = state.hover_button == Some(BTN_UNATTENDED);
+    draw_button(
+        hdc,
+        &RECT_BTN_UNATTENDED,
+        unattended_text,
+        unattended_bg,
+        unattended_hover,
+        COLOR_INK,
+        is_unattended_hover,
+        font_btn,
+    );
 
+    // ------------------------------------------------------------------------
     // Right Card: Connect to Remote
-    let card_remote = RECT { left: 545, top: 85, right: 855, bottom: 310 };
-    draw_rounded_card(hdc, &card_remote, COLOR_CARD, COLOR_CARD_BORDER);
+    // ------------------------------------------------------------------------
+    let card_remote = RECT {
+        left: 545,
+        top: 85,
+        right: 855,
+        bottom: 310,
+    };
+    draw_card(hdc, &card_remote, COLOR_WHITE, COLOR_INK, 3, 4, 6);
 
-    SelectObject(hdc, font_bold);
-    SetTextColor(hdc, COLORREF(COLOR_TEXT_WHITE));
-    let mut rem_header_rect = RECT { left: 565, top: 100, right: 830, bottom: 120 };
-    let mut rem_header: Vec<u16> = "Connect to Remote Device".encode_utf16().collect();
-    DrawTextW(hdc, &mut rem_header, &mut rem_header_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(hdc, font_card_header);
+    SetTextColor(hdc, COLORREF(COLOR_INK));
+    let mut rem_header_rect = RECT {
+        left: 565,
+        top: 98,
+        right: 835,
+        bottom: 122,
+    };
+    let mut rem_header: Vec<u16> = "REMOTE CLIENT CONTROL".encode_utf16().collect();
+    DrawTextW(
+        hdc,
+        &mut rem_header,
+        &mut rem_header_rect,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+    );
 
-    SelectObject(hdc, font_subtitle);
-    SetTextColor(hdc, COLORREF(COLOR_TEXT_MUTED));
-    let mut rem_id_rect = RECT { left: 565, top: 130, right: 830, bottom: 148 };
-    let mut rem_id_lbl: Vec<u16> = "Remote Device ID or IP".encode_utf16().collect();
-    DrawTextW(hdc, &mut rem_id_lbl, &mut rem_id_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(hdc, font_label);
+    SetTextColor(hdc, COLORREF(COLOR_MUTED));
+    let mut rem_id_rect = RECT {
+        left: 565,
+        top: 130,
+        right: 835,
+        bottom: 146,
+    };
+    let mut rem_id_lbl: Vec<u16> = "[TARGET] REMOTE DEVICE ID OR IP".encode_utf16().collect();
+    DrawTextW(
+        hdc,
+        &mut rem_id_lbl,
+        &mut rem_id_rect,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+    );
 
-    let mut rem_pin_rect = RECT { left: 565, top: 190, right: 830, bottom: 208 };
-    let mut rem_pin_lbl: Vec<u16> = "Remote PIN".encode_utf16().collect();
-    DrawTextW(hdc, &mut rem_pin_lbl, &mut rem_pin_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    let mut rem_pin_rect = RECT {
+        left: 565,
+        top: 190,
+        right: 835,
+        bottom: 206,
+    };
+    let mut rem_pin_lbl: Vec<u16> = "[ACCESS PIN] REMOTE ACCESS PIN".encode_utf16().collect();
+    DrawTextW(
+        hdc,
+        &mut rem_pin_lbl,
+        &mut rem_pin_rect,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+    );
 
     // Connect Button
-    let conn_bg = if state.hover_button == Some(BTN_CONNECT) { 0x00C89E28 } else { 0x00E2B838 };
-    draw_button(hdc, &RECT_BTN_CONNECT, "Connect to Remote", conn_bg, 0x000F1217);
+    let is_conn_hover = state.hover_button == Some(BTN_CONNECT);
+    draw_button(
+        hdc,
+        &RECT_BTN_CONNECT,
+        "⚡ CONNECT TO REMOTE",
+        COLOR_YELLOW,
+        COLOR_MINT,
+        COLOR_INK,
+        is_conn_hover,
+        font_btn_lg,
+    );
 
-    // 3. Middle Section: Hardware & Engine Status Cards
-    let status_card = RECT { left: 25, top: 320, right: 855, bottom: 385 };
-    draw_rounded_card(hdc, &status_card, COLOR_CARD, COLOR_CARD_BORDER);
+    // ------------------------------------------------------------------------
+    // 3. Middle Section: Hardware & Engine Status Card
+    // ------------------------------------------------------------------------
+    let status_card = RECT {
+        left: 25,
+        top: 320,
+        right: 855,
+        bottom: 385,
+    };
+    draw_card(hdc, &status_card, COLOR_PAPER, COLOR_INK, 2, 3, 4);
 
-    SelectObject(hdc, font_subtitle);
-    SetTextColor(hdc, COLORREF(COLOR_TEXT_MUTED));
+    SelectObject(hdc, font_label);
+    SetTextColor(hdc, COLORREF(COLOR_INK));
     let vdd_status = mirror_core::virtual_display::get_status();
     let vdd_str = if vdd_status.driver_installed {
-        "WDDM IDD (Ready)"
+        "WDDM IDD (Installed & Ready)"
     } else if vdd_status.is_headless {
-        "Headless Mode (Canvas Active)"
+        "Headless Canvas (Active)"
     } else {
         "Headless Canvas (Fallback Ready)"
     };
     let mut stats: Vec<u16> = format!(
-        "Capture: DXGI Desktop Duplication (GPU)   •   Video: MFT Hardware H.264\nDisplay Driver: {}   •   Audio: WASAPI 48kHz Stereo Opus",
+        "⚡ CAPTURE: DXGI Desktop Duplication (GPU Direct)  •  VIDEO: MFT Hardware H.264 Encoder (Zero-Copy)\n🛡️ DISPLAY: {}  •  AUDIO: WASAPI 48kHz Stereo Opus Low-Latency",
         vdd_str
     ).encode_utf16().collect();
-    let mut stats_rect = RECT { left: 45, top: 332, right: 835, bottom: 375 };
+    let mut stats_rect = RECT {
+        left: 45,
+        top: 332,
+        right: 835,
+        bottom: 375,
+    };
     DrawTextW(hdc, &mut stats, &mut stats_rect, DT_LEFT | DT_WORDBREAK);
 
+    // ------------------------------------------------------------------------
     // 4. Bottom Section: Live Telemetry & Log Console
-    let log_card = RECT { left: 25, top: 395, right: 855, bottom: 585 };
-    draw_rounded_card(hdc, &log_card, COLOR_CARD, COLOR_CARD_BORDER);
+    // ------------------------------------------------------------------------
+    let log_card = RECT {
+        left: 25,
+        top: 395,
+        right: 855,
+        bottom: 585,
+    };
+    draw_card(hdc, &log_card, COLOR_WHITE, COLOR_INK, 3, 4, 6);
 
-    SelectObject(hdc, font_bold);
-    SetTextColor(hdc, COLORREF(COLOR_TEXT_WHITE));
-    let mut log_header_rect = RECT { left: 45, top: 408, right: 400, bottom: 428 };
-    let mut log_header: Vec<u16> = "Live Session Activity & Telemetry".encode_utf16().collect();
-    DrawTextW(hdc, &mut log_header, &mut log_header_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(hdc, font_card_header);
+    SetTextColor(hdc, COLORREF(COLOR_INK));
+    let mut log_header_rect = RECT {
+        left: 45,
+        top: 407,
+        right: 340,
+        bottom: 429,
+    };
+    let mut log_header: Vec<u16> = "SESSION TELEMETRY & LOGS".encode_utf16().collect();
+    DrawTextW(
+        hdc,
+        &mut log_header,
+        &mut log_header_rect,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+    );
 
-    // Telemetry Metrics
+    // Telemetry Metrics Badge
     let fps = state.telemetry.fps.load(Ordering::Relaxed);
     let kbps = state.telemetry.bitrate_kbps.load(Ordering::Relaxed);
     let sent = state.telemetry.frames_sent.load(Ordering::Relaxed);
     let skipped = state.telemetry.frames_skipped.load(Ordering::Relaxed);
 
-    SelectObject(hdc, font_subtitle);
-    SetTextColor(hdc, COLORREF(COLOR_ACCENT_CYAN));
+    SelectObject(hdc, font_label);
+    SetTextColor(hdc, COLORREF(COLOR_INK));
     let mut metrics_str: Vec<u16> = format!(
-        "FPS: {}   •   Bitrate: {:.1} Mbps   •   Frames Sent: {}   •   Static Skipped: {}",
-        fps, kbps as f32 / 1000.0, sent, skipped
-    ).encode_utf16().collect();
-    let mut metrics_rect = RECT { left: 320, top: 408, right: 735, bottom: 428 };
-    DrawTextW(hdc, &mut metrics_str, &mut metrics_rect, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+        "FPS: {}  •  {:.1} Mbps  •  Sent: {}  •  Skipped: {}",
+        fps,
+        kbps as f32 / 1000.0,
+        sent,
+        skipped
+    )
+    .encode_utf16()
+    .collect();
+    let mut metrics_rect = RECT {
+        left: 350,
+        top: 407,
+        right: 735,
+        bottom: 429,
+    };
+    DrawTextW(
+        hdc,
+        &mut metrics_str,
+        &mut metrics_rect,
+        DT_RIGHT | DT_VCENTER | DT_SINGLELINE,
+    );
 
     // Clear Log button
-    let clear_bg = if state.hover_button == Some(BTN_CLEAR_LOG) { 0x003D2E24 } else { 0x002B211A };
-    draw_button(hdc, &RECT_BTN_CLEAR_LOG, "Clear", clear_bg, COLOR_TEXT_MUTED);
+    let is_clear_hover = state.hover_button == Some(BTN_CLEAR_LOG);
+    draw_button(
+        hdc,
+        &RECT_BTN_CLEAR_LOG,
+        "CLEAR",
+        COLOR_WHITE,
+        COLOR_PINK,
+        COLOR_INK,
+        is_clear_hover,
+        font_btn,
+    );
 
-    // Console Log Box
-    let console_rect = RECT { left: 45, top: 435, right: 835, bottom: 570 };
-    draw_rounded_card(hdc, &console_rect, COLOR_CONSOLE_BG, COLOR_CARD_BORDER);
+    // Console Box: Ink background, crisp 2px ink border, hard shadow, mint text
+    let console_rect = RECT {
+        left: 45,
+        top: 435,
+        right: 835,
+        bottom: 570,
+    };
+    draw_card(hdc, &console_rect, COLOR_CONSOLE_BG, COLOR_INK, 2, 3, 4);
 
     if let Ok(logs) = state.telemetry.log_messages.read() {
         let display_lines: Vec<&String> = logs.iter().rev().take(6).collect();
-        let font_console = make_font(13, FW_NORMAL.0 as i32, w!("Consolas"));
         SelectObject(hdc, font_console);
-        SetTextColor(hdc, COLORREF(0x00A0D080)); // Soft terminal green
+        SetTextColor(hdc, COLORREF(COLOR_MINT));
 
         let mut y_offset = 442;
         for line in display_lines.iter().rev() {
-            let mut line_w: Vec<u16> = line.encode_utf16().collect();
-            let mut line_rect = RECT { left: 55, top: y_offset, right: 825, bottom: y_offset + 18 };
-            DrawTextW(hdc, &mut line_w, &mut line_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            let mut line_w: Vec<u16> = format!("> {}", line).encode_utf16().collect();
+            let mut line_rect = RECT {
+                left: 55,
+                top: y_offset,
+                right: 825,
+                bottom: y_offset + 18,
+            };
+            DrawTextW(
+                hdc,
+                &mut line_w,
+                &mut line_rect,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+            );
             y_offset += 20;
         }
-        DeleteObject(font_console);
     }
 
+    // ------------------------------------------------------------------------
     // 5. Footer
-    SelectObject(hdc, font_subtitle);
-    SetTextColor(hdc, COLORREF(0x0064748B));
-    let mut footer_str: Vec<u16> = "VrV Desk v0.14.0 • ChaCha20-Poly1305 E2EE • Zero-Config LAN Multicast • Windows x64 Native".encode_utf16().collect();
-    let mut footer_rect = RECT { left: 25, top: 595, right: 855, bottom: 615 };
-    DrawTextW(hdc, &mut footer_str, &mut footer_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    // ------------------------------------------------------------------------
+    SelectObject(hdc, font_footer);
+    SetTextColor(hdc, COLORREF(COLOR_MUTED));
+    let mut footer_str: Vec<u16> =
+        "VrV Desk v0.14.0 • ChaCha20-Poly1305 E2EE • Zero-Config LAN Multicast • Windows x64 Native GDI"
+            .encode_utf16()
+            .collect();
+    let mut footer_rect = RECT {
+        left: 25,
+        top: 595,
+        right: 855,
+        bottom: 615,
+    };
+    DrawTextW(
+        hdc,
+        &mut footer_str,
+        &mut footer_rect,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+    );
 
-    // Clean up fonts
+    // Clean up fonts to prevent GDI resource leaks
     SelectObject(hdc, old_font);
     DeleteObject(font_title);
+    DeleteObject(font_badge);
     DeleteObject(font_subtitle);
-    DeleteObject(font_bold);
-    DeleteObject(font_giant);
-    DeleteObject(font_pin);
+    DeleteObject(font_card_header);
+    DeleteObject(font_label);
+    DeleteObject(font_giant_id);
+    DeleteObject(font_giant_pin);
+    DeleteObject(font_btn);
+    DeleteObject(font_btn_lg);
+    DeleteObject(font_console);
+    DeleteObject(font_footer);
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pin_str = get_or_generate_pin(None);
     let pin = Arc::new(std::sync::RwLock::new(pin_str));
-    let unattended = Arc::new(std::sync::RwLock::new(mirror_core::unattended::UnattendedConfig::load()));
+    let unattended = Arc::new(std::sync::RwLock::new(
+        mirror_core::unattended::UnattendedConfig::load(),
+    ));
     let device_id = get_or_generate_device_id(None);
     let host_name = get_host_name();
     let is_elevated = mirror_core::service_manager::is_elevated();
@@ -571,7 +1104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pin,
             unattended,
             is_elevated,
-            host_name,
+            _host_name: host_name,
             telemetry,
             is_sharing,
             hover_button: None,

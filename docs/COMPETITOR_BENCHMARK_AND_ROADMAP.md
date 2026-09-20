@@ -24,6 +24,7 @@
 | **System Shortcuts (Ctrl+Alt+Del)**| ✅ **Ada (SAS Dynamic Injection)** | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Terbatas |
 | **In-Session Chat & Whiteboard** | ❌ *Belum Ada* | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Tidak Ada |
 | **Session Recording** | ❌ *Belum Ada* | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Tidak Ada |
+| **Design System & Visual Language** | 🎨 **Neobrutalism (High-Contrast Bold, 0 Blur)** | Material 3 Standard | Flat Corporate | Classic Enterprise | Gaming Glassmorphism |
 | **Web Client (Browser Remote)** | 🛡️ **Wajib Aplikasi Native (Security & Low-Latency Policy)** | ✅ Ada (WASM/WebRTC) | ✅ Ada (go.anydesk.com) | ✅ Ada (Web Client) | ✅ Ada (WebRTC) |
 | **Remote Audio Android Host** | ✅ **Internal Audio 48kHz** | ❌ Bisu (Hanya Mic) | ❌ Bisu (Hanya Mic) | ❌ Bisu (Hanya Mic) | ❌ Client Saja |
 | **Ukuran Installer Windows** | ✅ **~16 MB (Standalone)**| ~25 - 35 MB | ~5 MB (Zero-install) | ~50 - 90 MB | ~40 MB |
@@ -130,3 +131,14 @@
   1. *Keamanan Maksimal:* Menghilangkan risiko serangan browser-based XSS, sandbox escape, dan sniffing WebRTC pada public browser.
   2. *Akses Input Level Sistem Tanpa Halangan:* Browser membatasi intercept tombol sistem penting (`Alt+Tab`, `Win+L`, `Ctrl+Alt+Del`, global key combinations, right-click context menu lock, dan pointer capture).
   3. *Ultra Low Latency & Efisiensi Hardware:* Aplikasi native mendukung pipeline decoding hardware langsung (MediaCodec H.264 di Android, DirectX 11 / DXGI di Windows) dan zero-copy rendering tanpa overhead browser runtime.
+
+### Phase 27: Neobrutalism UI Redesign (Unified Android & Windows PC) - [x] **Completed & Verified**
+- [x] **Riset & Definisi DNA Visual:** Melakukan riset berbasis MCP Playwright pada referensi otoritatif (`https://neubrutalism.com`). Menetapkan token:
+  - 3px solid ink border (`#111111`), 0px blur hard offset shadow (4px / 2px), warm paper base (`#FFF7E8`).
+  - Palet aksen saturasi tinggi: Yellow (`#FFD447`), Cyan (`#70D6FF`), Mint (`#7BF1A8`), Pink (`#FF70A6`), Coral Danger (`#FF5C5C`).
+  - Geometri near-square (radius 4-6px), tipografi ultra-bold/black, zero opacity haze / glassmorphism.
+- [x] **Implementasi Flutter Design System:** Menghadirkan modul terpusat `lib/src/theme/neobrutalist_theme.dart` untuk tombol, input dialog, chips, dan cards.
+- [x] **Refaktor Menyeluruh Client Android:** Memperbarui 8 view/widget: `home_view.dart`, `mirror_view.dart`, `file_manager_view.dart`, `qr_scanner_view.dart`, `shortcut_bar.dart`, `host_mode_dialog.dart`, `pin_dialog.dart`, dan `qr_code_dialog.dart`.
+- [x] **Refaktor Native Win32 GDI PC:** Memperbarui `rust/src/bin/vrv_desk.rs` dengan double-buffered neobrutalism canvas, card hard shadows, button hover states, dan terminal console log box.
+- [x] **Pengujian & Verifikasi Mutlak:** Seluruh 156/156 tests lulus 100% (83 Flutter tests + 73 Rust tests), lolos live WebSocket E2E testing, dan installer binary release ter-bundle.
+

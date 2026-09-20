@@ -54,13 +54,17 @@ async def test_monitor_privacy_e2e():
         print("[4] Requesting switch_monitor to index 0...")
         await ws.send(json.dumps({"type": "switch_monitor", "index": 0}))
         switch_res = None
-        for _ in range(20):
-            res = await ws.recv()
-            if isinstance(res, str):
-                parsed = json.loads(res)
-                if parsed.get("type") == "switch_monitor_res":
-                    switch_res = parsed
-                    break
+        start_t = time.time()
+        while time.time() - start_t < 3.0:
+            try:
+                res = await asyncio.wait_for(ws.recv(), timeout=1.0)
+                if isinstance(res, str):
+                    parsed = json.loads(res)
+                    if parsed.get("type") == "switch_monitor_res":
+                        switch_res = parsed
+                        break
+            except asyncio.TimeoutError:
+                break
 
         assert switch_res is not None, "Did not receive switch_monitor_res"
         print(f"    Switch res object: {switch_res}")

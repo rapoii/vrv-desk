@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+
 import '../services/qr_pairing_service.dart';
+import '../theme/neobrutalist_theme.dart';
 
 class QrCodeDialog extends StatelessWidget {
   final QrPairingData pairingData;
 
-  const QrCodeDialog({
-    super.key,
-    required this.pairingData,
-  });
+  const QrCodeDialog({super.key, required this.pairingData});
 
   String _format6Digit(String id) {
     final clean = id.replaceAll(' ', '');
@@ -24,18 +23,24 @@ class QrCodeDialog extends StatelessWidget {
     final payload = QrPairingService.serialize(pairingData);
 
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E1E2E),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: NeobrutalTheme.paper,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(NeobrutalTheme.radius),
+        side: const BorderSide(
+          color: NeobrutalTheme.ink,
+          width: NeobrutalTheme.borderWidth,
+        ),
+      ),
       title: const Row(
         children: [
-          Icon(Icons.qr_code_2, color: Colors.blueAccent),
+          Icon(Icons.qr_code_2, color: NeobrutalTheme.ink),
           SizedBox(width: 8),
           Text(
             'Device QR Code',
             style: TextStyle(
-              color: Colors.white,
+              color: NeobrutalTheme.ink,
               fontSize: 18,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
@@ -46,7 +51,11 @@ class QrCodeDialog extends StatelessWidget {
           children: [
             const Text(
               'Scan this code from another device to connect instantly without typing.',
-              style: TextStyle(color: Colors.white70, fontSize: 13),
+              style: TextStyle(
+                color: NeobrutalTheme.ink,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
@@ -55,10 +64,7 @@ class QrCodeDialog extends StatelessWidget {
               height: 224,
               child: Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                decoration: NeobrutalTheme.panel(color: NeobrutalTheme.surface),
                 child: QrImageView(
                   key: const Key('qr_image_view'),
                   data: payload,
@@ -70,16 +76,19 @@ class QrCodeDialog extends StatelessWidget {
             const SizedBox(height: 16),
             if (pairingData.deviceId.isNotEmpty)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white10,
-                  borderRadius: BorderRadius.circular(8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: NeobrutalTheme.compactPanel(
+                  color: NeobrutalTheme.yellow,
+                  shadow: false,
                 ),
                 child: Text(
                   'Device ID: ${_format6Digit(pairingData.deviceId)}',
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+                    color: NeobrutalTheme.ink,
+                    fontWeight: FontWeight.w900,
                     letterSpacing: 1.1,
                   ),
                 ),
@@ -87,16 +96,19 @@ class QrCodeDialog extends StatelessWidget {
             if (pairingData.pin != null && pairingData.pin!.isNotEmpty) ...[
               const SizedBox(height: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.blueAccent.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: NeobrutalTheme.compactPanel(
+                  color: NeobrutalTheme.cyan,
+                  shadow: false,
                 ),
                 child: Text(
                   'PIN: ${_format6Digit(pairingData.pin!)}',
                   style: const TextStyle(
-                    color: Colors.blueAccent,
-                    fontWeight: FontWeight.bold,
+                    color: NeobrutalTheme.ink,
+                    fontWeight: FontWeight.w900,
                     letterSpacing: 1.1,
                   ),
                 ),
@@ -107,8 +119,14 @@ class QrCodeDialog extends StatelessWidget {
       ),
       actions: [
         TextButton.icon(
-          icon: const Icon(Icons.copy, size: 16, color: Colors.white70),
-          label: const Text('Copy Data', style: TextStyle(color: Colors.white70)),
+          icon: const Icon(Icons.copy, size: 16, color: NeobrutalTheme.ink),
+          label: const Text(
+            'Copy Data',
+            style: TextStyle(
+              color: NeobrutalTheme.ink,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           onPressed: () {
             Clipboard.setData(ClipboardData(text: payload));
             ScaffoldMessenger.of(context).showSnackBar(
@@ -121,8 +139,8 @@ class QrCodeDialog extends StatelessWidget {
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blueAccent,
-            foregroundColor: Colors.white,
+            backgroundColor: NeobrutalTheme.yellow,
+            foregroundColor: NeobrutalTheme.ink,
           ),
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Close'),

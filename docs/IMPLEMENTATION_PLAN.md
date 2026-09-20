@@ -1142,3 +1142,9 @@ Rincian spesifikasi teknis dan audit riset pasar terhadap RustDesk, AnyDesk, dan
   - [x] Keputusan arsitektur resmi: Web client ditiadakan demi menjamin privasi absolut, keamanan sandboxing, dan zero-latency rendering.
   - [x] Sesi remote diwajibkan 100% menggunakan aplikasi native (Flutter Android APK & Windows PC Desktop GUI/Service).
   - [x] Akses penuh tombol sistem (`Ctrl+Alt+Del`, `Win+L`, `Alt+Tab`) dan pipeline hardware decoding langsung (MediaCodec H.264 & DirectX 11) tanpa batasan browser.
+- [x] **Phase 27: Neobrutalism UI Redesign (Unified Android & Windows PC) - Completed & Verified**
+  - [x] Riset web kredibel via MCP Playwright (`https://neubrutalism.com`): DNA visual borders 3px solid ink (`#111111`), hard offset shadows (4px/2px tanpa blur), warm paper background (`#FFF7E8`), flat high-contrast saturated accents (Yellow `#FFD447`, Cyan `#70D6FF`, Mint `#7BF1A8`, Pink `#FF70A6`, Coral `#FF5C5C`), near-square geometry (radius 4-6px), dan tipografi bold/black.
+  - [x] Flutter Design System (`lib/src/theme/neobrutalist_theme.dart`): token warna, border, shadow, shapes, button themes, dialog themes, chip themes, input decoration themes, dan helper decorators.
+  - [x] Mobile/Android Client Redesign: refaktor menyeluruh pada `home_view.dart`, `mirror_view.dart`, `file_manager_view.dart`, `qr_scanner_view.dart`, `shortcut_bar.dart`, `host_mode_dialog.dart`, `pin_dialog.dart`, dan `qr_code_dialog.dart`.
+  - [x] Native PC Win32/GDI Redesign (`rust/src/bin/vrv_desk.rs`): double-buffered GDI rendering dengan palet paper/ink, hard offset box shadows, rounded cards 4px, high-contrast action buttons, console terminal, dan status pills.
+  - [x] Pengujian komprehensif: Seluruh 156/156 unit & integration tests lulus (83 Flutter + 73 Rust) dan seluruh live E2E Python tests terverifikasi hijau.

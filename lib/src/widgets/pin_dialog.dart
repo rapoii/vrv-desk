@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/neobrutalist_theme.dart';
+
 class PinDialog extends StatefulWidget {
   final String deviceName;
   final ValueChanged<String> onSubmitted;
@@ -79,7 +81,21 @@ class _PinDialogState extends State<PinDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('Connect to ${widget.deviceName}'),
+      backgroundColor: NeobrutalTheme.paper,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(NeobrutalTheme.radius),
+        side: const BorderSide(
+          color: NeobrutalTheme.ink,
+          width: NeobrutalTheme.borderWidth,
+        ),
+      ),
+      title: Text(
+        'Connect to ${widget.deviceName}',
+        style: const TextStyle(
+          fontWeight: FontWeight.w900,
+          color: NeobrutalTheme.ink,
+        ),
+      ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -87,15 +103,39 @@ class _PinDialogState extends State<PinDialog> {
           // Mode Selector
           SegmentedButton<bool>(
             key: const Key('auth_mode_selector'),
+            style: ButtonStyle(
+              side: const WidgetStatePropertyAll(
+                BorderSide(
+                  color: NeobrutalTheme.ink,
+                  width: NeobrutalTheme.compactBorderWidth,
+                ),
+              ),
+              shape: WidgetStatePropertyAll(
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+              ),
+              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return NeobrutalTheme.yellow;
+                }
+                return NeobrutalTheme.surface;
+              }),
+              foregroundColor: const WidgetStatePropertyAll(NeobrutalTheme.ink),
+            ),
             segments: const [
               ButtonSegment<bool>(
                 value: false,
-                label: Text('One-Time PIN'),
+                label: Text(
+                  'One-Time PIN',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
                 icon: Icon(Icons.dialpad, size: 16),
               ),
               ButtonSegment<bool>(
                 value: true,
-                label: Text('Unattended'),
+                label: Text(
+                  'Unattended',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
                 icon: Icon(Icons.vpn_key, size: 16),
               ),
             ],
@@ -112,7 +152,11 @@ class _PinDialogState extends State<PinDialog> {
             _isUnattendedMode
                 ? 'Enter the permanent Unattended Access password configured on the remote host:'
                 : 'Enter the 6-digit dynamic PIN displayed on the remote device:',
-            style: const TextStyle(fontSize: 13, color: Colors.grey),
+            style: const TextStyle(
+              fontSize: 13,
+              color: NeobrutalTheme.muted,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 12),
           if (!_isUnattendedMode)
@@ -127,7 +171,8 @@ class _PinDialogState extends State<PinDialog> {
               style: const TextStyle(
                 letterSpacing: 8,
                 fontSize: 24,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w900,
+                color: NeobrutalTheme.ink,
               ),
               decoration: const InputDecoration(
                 counterText: '',
@@ -169,6 +214,17 @@ class _PinDialogState extends State<PinDialog> {
                 Checkbox(
                   key: const Key('remember_password_checkbox'),
                   value: _rememberPassword,
+                  fillColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return NeobrutalTheme.ink;
+                    }
+                    return NeobrutalTheme.surface;
+                  }),
+                  checkColor: NeobrutalTheme.yellow,
+                  side: const BorderSide(
+                    color: NeobrutalTheme.ink,
+                    width: NeobrutalTheme.compactBorderWidth,
+                  ),
                   onChanged: (val) {
                     setState(() {
                       _rememberPassword = val ?? false;
@@ -178,7 +234,11 @@ class _PinDialogState extends State<PinDialog> {
                 const Expanded(
                   child: Text(
                     'Remember password for this device',
-                    style: TextStyle(fontSize: 13),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: NeobrutalTheme.ink,
+                    ),
                   ),
                 ),
               ],

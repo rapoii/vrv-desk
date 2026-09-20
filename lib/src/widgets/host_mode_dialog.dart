@@ -1,9 +1,11 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+
 import '../services/android_host_service.dart';
 import '../services/qr_pairing_service.dart';
+import '../theme/neobrutalist_theme.dart';
 
 /// Modal dialog for Android Host screen broadcasting, permission handling,
 /// PIN display, live connection metrics, and QR sharing.
@@ -119,7 +121,9 @@ class _HostModeDialogState extends State<HostModeDialog> {
           deviceId: widget.deviceId,
           deviceName: widget.deviceName,
         );
-        final targetFps = _useAdbMode ? _maxRefreshRate.toInt().clamp(30, 120) : 30;
+        final targetFps = _useAdbMode
+            ? _maxRefreshRate.toInt().clamp(30, 120)
+            : 30;
         await _hostService.startCapture(fps: targetFps);
       }
     } finally {
@@ -145,27 +149,33 @@ class _HostModeDialogState extends State<HostModeDialog> {
     final currentPin = _hostService.currentPin;
 
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E1E2E),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: NeobrutalTheme.paper,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(NeobrutalTheme.radius),
+        side: const BorderSide(
+          color: NeobrutalTheme.ink,
+          width: NeobrutalTheme.borderWidth,
+        ),
+      ),
       title: Row(
         children: [
           Icon(
             isRunning ? Icons.screen_share : Icons.mobile_screen_share,
-            color: isRunning ? Colors.greenAccent : Colors.blueAccent,
+            color: NeobrutalTheme.ink,
           ),
           const SizedBox(width: 8),
           const Expanded(
             child: Text(
               'Broadcast Screen (Host)',
               style: TextStyle(
-                color: Colors.white,
+                color: NeobrutalTheme.ink,
                 fontSize: 18,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w900,
               ),
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.close, color: Colors.white70),
+            icon: const Icon(Icons.close, color: NeobrutalTheme.ink),
             onPressed: () => Navigator.of(context).pop(),
           ),
         ],
@@ -179,10 +189,14 @@ class _HostModeDialogState extends State<HostModeDialog> {
             if (!_isAccessibilityEnabled) ...[
               Card(
                 key: const Key('accessibility_warning_card'),
-                color: Colors.amber.withOpacity(0.15),
+                color: NeobrutalTheme.yellow,
+                elevation: 0,
                 shape: RoundedRectangleBorder(
-                  side: const BorderSide(color: Colors.amber, width: 1),
-                  borderRadius: BorderRadius.circular(8),
+                  side: const BorderSide(
+                    color: NeobrutalTheme.ink,
+                    width: NeobrutalTheme.compactBorderWidth,
+                  ),
+                  borderRadius: BorderRadius.circular(NeobrutalTheme.radius),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
@@ -191,13 +205,16 @@ class _HostModeDialogState extends State<HostModeDialog> {
                     children: [
                       const Row(
                         children: [
-                          Icon(Icons.warning_amber_rounded, color: Colors.amber),
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            color: NeobrutalTheme.ink,
+                          ),
                           SizedBox(width: 8),
                           Text(
                             'Accessibility Permission Needed',
                             style: TextStyle(
-                              color: Colors.amber,
-                              fontWeight: FontWeight.bold,
+                              color: NeobrutalTheme.ink,
+                              fontWeight: FontWeight.w900,
                               fontSize: 13,
                             ),
                           ),
@@ -206,7 +223,11 @@ class _HostModeDialogState extends State<HostModeDialog> {
                       const SizedBox(height: 6),
                       const Text(
                         'To allow remote control gestures (touch, swipe, back, home) from PC, enable the VrV Desk Accessibility Service.',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                        style: TextStyle(
+                          color: NeobrutalTheme.ink,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       SizedBox(
@@ -214,8 +235,12 @@ class _HostModeDialogState extends State<HostModeDialog> {
                         child: OutlinedButton.icon(
                           key: const Key('open_accessibility_settings_button'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.amber,
-                            side: const BorderSide(color: Colors.amber),
+                            backgroundColor: NeobrutalTheme.surface,
+                            foregroundColor: NeobrutalTheme.ink,
+                            side: const BorderSide(
+                              color: NeobrutalTheme.ink,
+                              width: NeobrutalTheme.compactBorderWidth,
+                            ),
                           ),
                           onPressed: _openAccessibilitySettings,
                           icon: const Icon(Icons.settings, size: 16),
@@ -233,21 +258,33 @@ class _HostModeDialogState extends State<HostModeDialog> {
             if (!_isAudioSupported) ...[
               Card(
                 key: const Key('audio_fallback_warning_card'),
-                color: Colors.blueGrey.withOpacity(0.2),
+                color: NeobrutalTheme.surface,
+                elevation: 0,
                 shape: RoundedRectangleBorder(
-                  side: const BorderSide(color: Colors.blueGrey, width: 1),
-                  borderRadius: BorderRadius.circular(8),
+                  side: const BorderSide(
+                    color: NeobrutalTheme.ink,
+                    width: NeobrutalTheme.compactBorderWidth,
+                  ),
+                  borderRadius: BorderRadius.circular(NeobrutalTheme.radius),
                 ),
                 child: const Padding(
                   padding: EdgeInsets.all(12.0),
                   child: Row(
                     children: [
-                      Icon(Icons.volume_off, color: Colors.white70, size: 20),
+                      Icon(
+                        Icons.volume_off,
+                        color: NeobrutalTheme.ink,
+                        size: 20,
+                      ),
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           'Internal audio capture requires Android 10+. Video-only streaming active.',
-                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                          style: TextStyle(
+                            color: NeobrutalTheme.ink,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
@@ -258,21 +295,27 @@ class _HostModeDialogState extends State<HostModeDialog> {
             ] else ...[
               Container(
                 key: const Key('audio_active_badge'),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: Colors.teal.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: Colors.teal.withOpacity(0.3)),
+                decoration: NeobrutalTheme.compactPanel(
+                  color: NeobrutalTheme.mint,
+                  shadow: false,
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.volume_up, color: Colors.greenAccent, size: 16),
+                    Icon(Icons.volume_up, color: NeobrutalTheme.ink, size: 16),
                     SizedBox(width: 6),
                     Text(
                       'Internal Audio (48kHz Stereo) Supported',
-                      style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        color: NeobrutalTheme.ink,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ],
                 ),
@@ -285,24 +328,27 @@ class _HostModeDialogState extends State<HostModeDialog> {
                 key: const Key('adb_high_perf_card'),
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF162544),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.blueAccent.withOpacity(0.5)),
+                decoration: NeobrutalTheme.compactPanel(
+                  color: NeobrutalTheme.cyan,
+                  shadow: true,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.flash_on, color: Colors.cyanAccent, size: 20),
+                        const Icon(
+                          Icons.flash_on,
+                          color: NeobrutalTheme.ink,
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             'High-Performance ADB Mode (${_maxRefreshRate.toInt()}Hz)',
                             style: const TextStyle(
-                              color: Colors.cyanAccent,
-                              fontWeight: FontWeight.bold,
+                              color: NeobrutalTheme.ink,
+                              fontWeight: FontWeight.w900,
                               fontSize: 13,
                             ),
                           ),
@@ -310,7 +356,10 @@ class _HostModeDialogState extends State<HostModeDialog> {
                         Switch(
                           key: const Key('adb_mode_switch'),
                           value: _useAdbMode,
-                          activeColor: Colors.cyanAccent,
+                          activeThumbColor: NeobrutalTheme.yellow,
+                          activeTrackColor: NeobrutalTheme.ink,
+                          inactiveThumbColor: NeobrutalTheme.surface,
+                          inactiveTrackColor: NeobrutalTheme.paper,
                           onChanged: (val) {
                             setState(() {
                               _useAdbMode = val;
@@ -325,7 +374,11 @@ class _HostModeDialogState extends State<HostModeDialog> {
                       _useAdbMode
                           ? 'Ultra-low latency direct shell/uinput input active. Target ${_maxRefreshRate.toInt()}Hz.'
                           : 'Using standard AccessibilityService gestures.',
-                      style: const TextStyle(color: Colors.white70, fontSize: 11),
+                      style: const TextStyle(
+                        color: NeobrutalTheme.ink,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
@@ -335,16 +388,9 @@ class _HostModeDialogState extends State<HostModeDialog> {
             // Status Card
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isRunning
-                    ? Colors.greenAccent.withOpacity(0.1)
-                    : Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: isRunning
-                      ? Colors.greenAccent.withOpacity(0.4)
-                      : Colors.white12,
-                ),
+              decoration: NeobrutalTheme.compactPanel(
+                color: isRunning ? NeobrutalTheme.mint : NeobrutalTheme.surface,
+                shadow: true,
               ),
               child: Row(
                 children: [
@@ -353,15 +399,18 @@ class _HostModeDialogState extends State<HostModeDialog> {
                     height: 12,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: isRunning ? Colors.greenAccent : Colors.grey,
+                      color: isRunning
+                          ? NeobrutalTheme.mint
+                          : NeobrutalTheme.muted,
+                      border: Border.all(color: NeobrutalTheme.ink, width: 2),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Text(
                     isRunning ? 'Broadcasting Active' : 'Broadcasting Inactive',
-                    style: TextStyle(
-                      color: isRunning ? Colors.greenAccent : Colors.white70,
-                      fontWeight: FontWeight.bold,
+                    style: const TextStyle(
+                      color: NeobrutalTheme.ink,
+                      fontWeight: FontWeight.w900,
                       fontSize: 14,
                     ),
                   ),
@@ -376,24 +425,26 @@ class _HostModeDialogState extends State<HostModeDialog> {
                 Container(
                   key: const Key('host_pin_display'),
                   padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blueAccent.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blueAccent.withOpacity(0.4)),
+                  decoration: NeobrutalTheme.panel(
+                    color: NeobrutalTheme.yellow,
                   ),
                   child: Column(
                     children: [
                       const Text(
                         'One-Time Connection PIN',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                        style: TextStyle(
+                          color: NeobrutalTheme.ink,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         _format6Digit(currentPin),
                         style: const TextStyle(
-                          color: Colors.blueAccent,
+                          color: NeobrutalTheme.ink,
                           fontSize: 26,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w900,
                           letterSpacing: 3,
                         ),
                       ),
@@ -406,9 +457,8 @@ class _HostModeDialogState extends State<HostModeDialog> {
                     width: 180,
                     height: 180,
                     padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
+                    decoration: NeobrutalTheme.panel(
+                      color: NeobrutalTheme.surface,
                     ),
                     child: QrImageView(
                       key: const Key('host_qr_image_view'),
@@ -428,47 +478,61 @@ class _HostModeDialogState extends State<HostModeDialog> {
               ],
 
               // Metrics: frames sent, connected clients
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Column(
-                    children: [
-                      const Text(
-                        'Frames Sent',
-                        style: TextStyle(color: Colors.white54, fontSize: 11),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${_hostService.framesSent}',
-                        key: const Key('host_frames_sent_text'),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: NeobrutalTheme.compactPanel(
+                  color: NeobrutalTheme.surface,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Column(
+                      children: [
+                        const Text(
+                          'Frames Sent',
+                          style: TextStyle(
+                            color: NeobrutalTheme.muted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  Container(width: 1, height: 28, color: Colors.white12),
-                  Column(
-                    children: [
-                      const Text(
-                        'Clients',
-                        style: TextStyle(color: Colors.white54, fontSize: 11),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${_hostService.authenticatedClientsCount} connected',
-                        key: const Key('host_clients_count_text'),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                        const SizedBox(height: 2),
+                        Text(
+                          '${_hostService.framesSent}',
+                          key: const Key('host_frames_sent_text'),
+                          style: const TextStyle(
+                            color: NeobrutalTheme.ink,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                    Container(width: 2, height: 28, color: NeobrutalTheme.ink),
+                    Column(
+                      children: [
+                        const Text(
+                          'Clients',
+                          style: TextStyle(
+                            color: NeobrutalTheme.muted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${_hostService.authenticatedClientsCount} connected',
+                          key: const Key('host_clients_count_text'),
+                          style: const TextStyle(
+                            color: NeobrutalTheme.ink,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
             ],
@@ -477,11 +541,17 @@ class _HostModeDialogState extends State<HostModeDialog> {
             ElevatedButton.icon(
               key: const Key('host_mode_toggle_button'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: isRunning ? Colors.redAccent : Colors.blueAccent,
-                foregroundColor: Colors.white,
+                backgroundColor: isRunning
+                    ? NeobrutalTheme.danger
+                    : NeobrutalTheme.mint,
+                foregroundColor: NeobrutalTheme.ink,
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(NeobrutalTheme.radius),
+                  side: const BorderSide(
+                    color: NeobrutalTheme.ink,
+                    width: NeobrutalTheme.borderWidth,
+                  ),
                 ),
               ),
               onPressed: _isStartingOrStopping ? null : _toggleBroadcasting,
@@ -491,13 +561,15 @@ class _HostModeDialogState extends State<HostModeDialog> {
                       height: 16,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          NeobrutalTheme.ink,
+                        ),
                       ),
                     )
                   : Icon(isRunning ? Icons.stop : Icons.play_arrow),
               label: Text(
                 isRunning ? 'Stop Broadcasting' : 'Start Broadcasting',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: const TextStyle(fontWeight: FontWeight.w900),
               ),
             ),
           ],

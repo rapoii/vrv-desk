@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+
 import '../services/qr_pairing_service.dart';
+import '../theme/neobrutalist_theme.dart';
 
 class QrScannerView extends StatefulWidget {
   final void Function(QrPairingData data)? onScanned;
 
-  const QrScannerView({
-    super.key,
-    this.onScanned,
-  });
+  const QrScannerView({super.key, this.onScanned});
 
   @override
   State<QrScannerView> createState() => _QrScannerViewState();
@@ -69,24 +68,38 @@ class _QrScannerViewState extends State<QrScannerView> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.5),
+        backgroundColor: NeobrutalTheme.yellow,
+        foregroundColor: NeobrutalTheme.ink,
         elevation: 0,
+        shape: const Border(
+          bottom: BorderSide(
+            color: NeobrutalTheme.ink,
+            width: NeobrutalTheme.borderWidth,
+          ),
+        ),
         title: const Text(
           'Scan QR Code',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            fontSize: 18,
+            color: NeobrutalTheme.ink,
+          ),
         ),
         actions: [
           IconButton(
             key: const Key('toggle_torch_button'),
             icon: Icon(
               _isTorchOn ? Icons.flash_on : Icons.flash_off,
-              color: _isTorchOn ? Colors.yellowAccent : Colors.white,
+              color: NeobrutalTheme.ink,
             ),
             onPressed: _toggleTorch,
           ),
           IconButton(
             key: const Key('switch_camera_button'),
-            icon: const Icon(Icons.flip_camera_android, color: Colors.white),
+            icon: const Icon(
+              Icons.flip_camera_android,
+              color: NeobrutalTheme.ink,
+            ),
             onPressed: _switchCamera,
           ),
         ],
@@ -104,8 +117,11 @@ class _QrScannerViewState extends State<QrScannerView> {
               width: 250,
               height: 250,
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.blueAccent, width: 2.5),
-                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: NeobrutalTheme.yellow,
+                  width: NeobrutalTheme.borderWidth,
+                ),
+                borderRadius: BorderRadius.circular(NeobrutalTheme.radius),
               ),
               child: Stack(
                 children: [
@@ -177,14 +193,18 @@ class _QrScannerViewState extends State<QrScannerView> {
             child: Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.black87,
-                    borderRadius: BorderRadius.circular(20),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
                   ),
+                  decoration: NeobrutalTheme.panel(color: NeobrutalTheme.paper),
                   child: const Text(
                     'Point camera at the Host Device QR code',
-                    style: TextStyle(color: Colors.white, fontSize: 13),
+                    style: TextStyle(
+                      color: NeobrutalTheme.ink,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -193,7 +213,10 @@ class _QrScannerViewState extends State<QrScannerView> {
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text(
                     'Enter PIN / IP Manually',
-                    style: TextStyle(color: Colors.white70),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ],

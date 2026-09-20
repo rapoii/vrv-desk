@@ -1,18 +1,21 @@
 import 'dart:async';
 import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../models/device.dart';
 import '../services/android_host_service.dart';
 import '../services/lan_discovery_service.dart';
+import '../services/qr_pairing_service.dart';
+import '../services/unattended_storage.dart';
+import '../theme/neobrutalist_theme.dart';
 import '../widgets/host_mode_dialog.dart';
 import '../widgets/pin_dialog.dart';
 import '../widgets/qr_code_dialog.dart';
-import '../services/qr_pairing_service.dart';
-import 'qr_scanner_view.dart';
 import 'mirror_view.dart';
-import '../services/unattended_storage.dart';
+import 'qr_scanner_view.dart';
 
 class HomeView extends StatefulWidget {
   final String myDeviceId;
@@ -121,9 +124,7 @@ class _HomeViewState extends State<HomeView> {
 
   Future<void> _openQrScanner() async {
     final result = await Navigator.of(context).push<QrPairingData>(
-      MaterialPageRoute(
-        builder: (_) => const QrScannerView(),
-      ),
+      MaterialPageRoute(builder: (_) => const QrScannerView()),
     );
 
     if (result != null && mounted) {
@@ -152,7 +153,8 @@ class _HomeViewState extends State<HomeView> {
   }
 
   void _showPinDialog(DiscoveredDevice device) {
-    final savedPassword = UnattendedStorage.getSavedPassword(device.deviceId) ??
+    final savedPassword =
+        UnattendedStorage.getSavedPassword(device.deviceId) ??
         UnattendedStorage.getSavedPassword(device.ipAddress);
 
     showDialog(
@@ -211,11 +213,8 @@ class _HomeViewState extends State<HomeView> {
     } else {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => MirrorView(
-            hostIp: clean,
-            port: 53211,
-            initialPin: cleanPin,
-          ),
+          builder: (_) =>
+              MirrorView(hostIp: clean, port: 53211, initialPin: cleanPin),
         ),
       );
     }
@@ -234,7 +233,11 @@ class _HomeViewState extends State<HomeView> {
           children: [
             const Text(
               'Enter 6-digit Device ID (e.g. 849 201) or Host IP address:',
-              style: TextStyle(fontSize: 13, color: Colors.grey),
+              style: TextStyle(
+                fontSize: 13,
+                color: NeobrutalTheme.muted,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -242,7 +245,6 @@ class _HomeViewState extends State<HomeView> {
               controller: inputController,
               decoration: const InputDecoration(
                 labelText: 'Device ID or Host IP',
-                border: OutlineInputBorder(),
                 hintText: '849 201 or 192.168.x.x',
               ),
               keyboardType: TextInputType.text,
@@ -253,7 +255,6 @@ class _HomeViewState extends State<HomeView> {
               controller: pinController,
               decoration: const InputDecoration(
                 labelText: 'Host PIN (Optional, 6 digits)',
-                border: OutlineInputBorder(),
                 hintText: 'e.g. 123456',
               ),
               keyboardType: TextInputType.number,
@@ -303,183 +304,215 @@ class _HomeViewState extends State<HomeView> {
           ),
         ],
       ),
-
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    const Text(
-                      'Your Device ID',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey,
-                        fontWeight: FontWeight.w500,
-                      ),
+            Container(
+              decoration: NeobrutalTheme.panel(color: NeobrutalTheme.surface),
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                children: [
+                  const Text(
+                    'Your Device ID',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: NeobrutalTheme.ink,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.1,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: NeobrutalTheme.compactPanel(
+                      color: NeobrutalTheme.yellow,
+                    ),
+                    child: Text(
                       widget.myDeviceId,
                       key: const Key('my_device_id_text'),
                       style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 4,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 3,
+                        color: NeobrutalTheme.ink,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        ElevatedButton.icon(
-                          key: const Key('copy_device_id_button'),
-                          onPressed: _copyDeviceId,
-                          icon: Icon(_isCopied ? Icons.check : Icons.copy),
-                          label: Text(_isCopied ? 'Copied' : 'Copy ID'),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        key: const Key('copy_device_id_button'),
+                        onPressed: _copyDeviceId,
+                        icon: Icon(_isCopied ? Icons.check : Icons.copy),
+                        label: Text(_isCopied ? 'Copied' : 'Copy ID'),
+                      ),
+                      const SizedBox(width: 10),
+                      OutlinedButton.icon(
+                        key: const Key('show_qr_button'),
+                        onPressed: _showMyQrCode,
+                        icon: const Icon(Icons.qr_code_2),
+                        label: const Text('Show QR'),
+                      ),
+                    ],
+                  ),
+                  if (_isAndroid) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        key: const Key('share_screen_button'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: NeobrutalTheme.cyan,
+                          foregroundColor: NeobrutalTheme.ink,
                         ),
-                        const SizedBox(width: 12),
-                        OutlinedButton.icon(
-                          key: const Key('show_qr_button'),
-                          onPressed: _showMyQrCode,
-                          icon: const Icon(Icons.qr_code_2),
-                          label: const Text('Show QR'),
+                        onPressed: _showHostModeDialog,
+                        icon: const Icon(Icons.screen_share),
+                        label: const Text(
+                          'Share My Screen (Host)',
+                          style: TextStyle(fontWeight: FontWeight.w900),
                         ),
-                      ],
+                      ),
                     ),
-                    if (_isAndroid) ...[
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          key: const Key('share_screen_button'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.teal.shade700,
-                            foregroundColor: Colors.white,
-                          ),
-                          onPressed: _showHostModeDialog,
-                          icon: const Icon(Icons.screen_share),
-                          label: const Text(
-                            'Share My Screen (Host)',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              decoration: NeobrutalTheme.panel(color: NeobrutalTheme.surface),
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.bolt, color: NeobrutalTheme.ink),
+                      SizedBox(width: 8),
+                      Text(
+                        'Quick Connect',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: NeobrutalTheme.ink,
                         ),
                       ),
                     ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.bolt,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Quick Connect',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Connect to any remote PC using 6-digit Device ID or local IP address:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: NeobrutalTheme.muted,
+                      fontWeight: FontWeight.w600,
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Connect to any remote PC using 6-digit Device ID or local IP address:',
-                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    key: const Key('quick_connect_field'),
+                    controller: _quickConnectController,
+                    decoration: const InputDecoration(
+                      labelText: 'Remote Device ID or IP',
+                      hintText: 'e.g. 849 201 or 192.168.1.100',
+                      prefixIcon: Icon(Icons.cast_connected),
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      key: const Key('quick_connect_field'),
-                      controller: _quickConnectController,
-                      decoration: const InputDecoration(
-                        labelText: 'Remote Device ID or IP',
-                        border: OutlineInputBorder(),
-                        hintText: 'e.g. 849 201 or 192.168.1.100',
-                        prefixIcon: Icon(Icons.cast_connected),
+                    keyboardType: TextInputType.text,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          key: const Key('quick_connect_button'),
+                          onPressed: () {
+                            _handleConnectInput(
+                              _quickConnectController.text,
+                              '',
+                            );
+                          },
+                          icon: const Icon(Icons.arrow_forward),
+                          label: const Text('Connect to Device'),
+                        ),
                       ),
-                      keyboardType: TextInputType.text,
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            key: const Key('quick_connect_button'),
-                            onPressed: () {
-                              _handleConnectInput(_quickConnectController.text, '');
-                            },
-                            icon: const Icon(Icons.arrow_forward),
-                            label: const Text('Connect to Device'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton.filledTonal(
-                          key: const Key('scan_qr_quick_button'),
-                          tooltip: 'Scan QR Code',
-                          icon: const Icon(Icons.qr_code_scanner),
-                          onPressed: _openQrScanner,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        key: const Key('scan_qr_quick_button'),
+                        tooltip: 'Scan QR Code',
+                        icon: const Icon(Icons.qr_code_scanner),
+                        onPressed: _openQrScanner,
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
                   'Discovered Devices',
                   style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    color: NeobrutalTheme.ink,
                   ),
                 ),
-                Text(
-                  '${_devices.length} found',
-                  key: const Key('discovered_count_text'),
-                  style: const TextStyle(color: Colors.grey),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: NeobrutalTheme.compactPanel(
+                    color: NeobrutalTheme.paper,
+                    shadow: false,
+                  ),
+                  child: Text(
+                    '${_devices.length} found',
+                    key: const Key('discovered_count_text'),
+                    style: const TextStyle(
+                      color: NeobrutalTheme.ink,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             if (_devices.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 32.0),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24.0),
                 child: Center(
-                  child: Column(
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 16),
-                      Text(
-                        'Scanning for devices on local network...',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    ],
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: NeobrutalTheme.panel(
+                      color: NeobrutalTheme.paper,
+                      shadow: false,
+                    ),
+                    child: const Column(
+                      children: [
+                        CircularProgressIndicator(
+                          strokeWidth: 3,
+                          color: NeobrutalTheme.ink,
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          'Scanning for devices on local network...',
+                          style: TextStyle(
+                            color: NeobrutalTheme.ink,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               )
@@ -488,7 +521,7 @@ class _HomeViewState extends State<HomeView> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _devices.length,
-                separatorBuilder: (context, index) => const Divider(),
+                separatorBuilder: (context, index) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final dev = _devices[index];
                   IconData iconData = Icons.devices;
@@ -498,43 +531,96 @@ class _HomeViewState extends State<HomeView> {
                     iconData = Icons.phone_android;
                   }
 
-                  return ListTile(
-                    key: Key('device_tile_${dev.deviceId}'),
-                    leading: CircleAvatar(
-                      child: Icon(iconData),
+                  return Container(
+                    decoration: NeobrutalTheme.compactPanel(
+                      color: NeobrutalTheme.surface,
                     ),
-                    title: Text(
-                      dev.deviceName,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            '${dev.ipAddress}:${dev.port} • ${dev.osType}',
-                            overflow: TextOverflow.ellipsis,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        key: Key('device_tile_${dev.deviceId}'),
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: NeobrutalTheme.mint,
+                            border: Border.all(
+                              color: NeobrutalTheme.ink,
+                              width: NeobrutalTheme.compactBorderWidth,
+                            ),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Icon(iconData, color: NeobrutalTheme.ink),
+                        ),
+                        title: Text(
+                          dev.deviceName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: NeobrutalTheme.ink,
                           ),
                         ),
-                        if (UnattendedStorage.hasSavedPassword(dev.deviceId) ||
-                            UnattendedStorage.hasSavedPassword(dev.ipAddress)) ...[
-                          const SizedBox(width: 6),
-                          const Icon(Icons.vpn_key, size: 14, color: Colors.amber),
-                          const Text(
-                            ' Saved',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.amber,
+                        subtitle: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                '${dev.ipAddress}:${dev.port} • ${dev.osType}',
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: NeobrutalTheme.muted,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    trailing: ElevatedButton(
-                      key: Key('connect_button_${dev.deviceId}'),
-                      onPressed: () => _showPinDialog(dev),
-                      child: const Text('Connect'),
+                            if (UnattendedStorage.hasSavedPassword(
+                                  dev.deviceId,
+                                ) ||
+                                UnattendedStorage.hasSavedPassword(
+                                  dev.ipAddress,
+                                )) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: NeobrutalTheme.yellow,
+                                  border: Border.all(
+                                    color: NeobrutalTheme.ink,
+                                    width: 1.5,
+                                  ),
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.vpn_key,
+                                      size: 12,
+                                      color: NeobrutalTheme.ink,
+                                    ),
+                                    SizedBox(width: 3),
+                                    Text(
+                                      'Saved',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                        color: NeobrutalTheme.ink,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        trailing: ElevatedButton(
+                          key: Key('connect_button_${dev.deviceId}'),
+                          onPressed: () => _showPinDialog(dev),
+                          child: const Text('Connect'),
+                        ),
+                      ),
                     ),
                   );
                 },
