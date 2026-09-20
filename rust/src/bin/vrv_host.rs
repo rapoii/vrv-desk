@@ -152,6 +152,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🌐 VrV Desk Remote Host Ready!");
     println!("📱 Device ID:   {}", format_six_digit_display(&device_id));
     println!("🔐 Session PIN: {}", format_six_digit_display(&pin));
+    let unattended_cfg = mirror_core::unattended::UnattendedConfig::load();
+    if unattended_cfg.enabled {
+        println!("🔑 Unattended:  ENABLED (Permanent password active)");
+    } else {
+        println!("🔑 Unattended:  Disabled");
+    }
     println!("📡 STUN Public: {}", stun_display);
     println!("📶 Local LAN:   ws://{}", addr);
     println!("=================================================");
@@ -312,12 +318,14 @@ where
 {
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
-    // Authenticate client with PIN gatekeeper before starting capturer or streaming tasks
-    let (session_token, e2ee_enabled) = AuthGatekeeper::authenticate_stream(
+    // Authenticate client with PIN gatekeeper or Unattended permanent password
+    let unattended_cfg = mirror_core::unattended::UnattendedConfig::load();
+    let (session_token, e2ee_enabled) = AuthGatekeeper::authenticate_stream_with_unattended(
         &mut ws_sender,
         &mut ws_receiver,
         &pin,
         &host_name,
+        Some(&unattended_cfg),
     )
     .await?;
 

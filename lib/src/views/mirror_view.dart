@@ -8,6 +8,7 @@ import '../services/video_stream_player.dart';
 import '../services/e2ee_transport.dart';
 import '../widgets/pin_dialog.dart';
 import '../widgets/shortcut_bar.dart';
+import '../services/unattended_storage.dart';
 
 typedef WebSocketConnector = Future<WebSocket> Function(String url);
 
@@ -287,6 +288,8 @@ class _MirrorViewState extends State<MirrorView> {
 
   void _showPinDialog() {
     if (!mounted || _dialogContext != null) return;
+    final targetKey = widget.targetDeviceId ?? widget.hostIp ?? '';
+    final savedPassword = UnattendedStorage.getSavedPassword(targetKey);
     final label = widget.targetDeviceId != null
         ? 'Device ${widget.targetDeviceId}'
         : 'Host PC (${widget.hostIp})';
@@ -297,8 +300,14 @@ class _MirrorViewState extends State<MirrorView> {
         _dialogContext = dContext;
         return PinDialog(
           deviceName: label,
+          initialSecret: savedPassword,
           onSubmitted: (enteredPin) {
             _sendPin(enteredPin);
+          },
+          onSubmittedWithRemember: (secret, remember) {
+            if (remember && targetKey.isNotEmpty) {
+              UnattendedStorage.savePassword(targetKey, secret);
+            }
           },
         );
       },

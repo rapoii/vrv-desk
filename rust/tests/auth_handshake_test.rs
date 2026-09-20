@@ -69,6 +69,7 @@ async fn test_auth_handshake_successful_pin() {
     // 2. Send correct AuthVerify
     let verify_msg = AuthMessage::AuthVerify {
         pin: pin.to_string(),
+        password: None,
         e2ee: false,
     };
     write
@@ -126,6 +127,7 @@ async fn test_auth_handshake_invalid_pin_retry() {
     // 2. Send Wrong PIN 1
     let verify_wrong = AuthMessage::AuthVerify {
         pin: "000000".to_string(),
+        password: None,
         e2ee: false,
     };
     write
@@ -172,6 +174,7 @@ async fn test_auth_handshake_invalid_pin_retry() {
     // 4. Now send correct PIN -> Should succeed
     let verify_correct = AuthMessage::AuthVerify {
         pin: correct_pin.to_string(),
+        password: None,
         e2ee: false,
     };
     write
@@ -207,6 +210,7 @@ async fn test_auth_handshake_three_failed_attempts_disconnects() {
 
     let wrong_msg = AuthMessage::AuthVerify {
         pin: "999999".to_string(),
+        password: None,
         e2ee: false,
     };
     let wrong_text = serde_json::to_string(&wrong_msg).unwrap();

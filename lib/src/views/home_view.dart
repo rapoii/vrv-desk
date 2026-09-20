@@ -12,6 +12,7 @@ import '../widgets/qr_code_dialog.dart';
 import '../services/qr_pairing_service.dart';
 import 'qr_scanner_view.dart';
 import 'mirror_view.dart';
+import '../services/unattended_storage.dart';
 
 class HomeView extends StatefulWidget {
   final String myDeviceId;
@@ -151,10 +152,14 @@ class _HomeViewState extends State<HomeView> {
   }
 
   void _showPinDialog(DiscoveredDevice device) {
+    final savedPassword = UnattendedStorage.getSavedPassword(device.deviceId) ??
+        UnattendedStorage.getSavedPassword(device.ipAddress);
+
     showDialog(
       context: context,
       builder: (context) => PinDialog(
         deviceName: device.deviceName,
+        initialSecret: savedPassword,
         onSubmitted: (pin) {
           if (widget.onConnect != null) {
             widget.onConnect!(device, pin);
@@ -170,6 +175,16 @@ class _HomeViewState extends State<HomeView> {
             );
           }
         },
+        onSubmittedWithRemember: (secret, remember) {
+          if (remember) {
+            UnattendedStorage.savePassword(device.deviceId, secret);
+            UnattendedStorage.savePassword(device.ipAddress, secret);
+          } else if (savedPassword != null) {
+            UnattendedStorage.removePassword(device.deviceId);
+            UnattendedStorage.removePassword(device.ipAddress);
+          }
+          if (mounted) setState(() {});
+        },
       ),
     );
   }
@@ -178,7 +193,9 @@ class _HomeViewState extends State<HomeView> {
     final clean = input.trim();
     if (clean.isEmpty) return;
 
-    final cleanPin = pin.trim().isNotEmpty ? pin.trim() : null;
+    final targetKey = clean.replaceAll(' ', '');
+    final savedPassword = UnattendedStorage.getSavedPassword(targetKey);
+    final cleanPin = pin.trim().isNotEmpty ? pin.trim() : savedPassword;
 
     if (HomeView.is6DigitDeviceId(clean)) {
       final targetId = clean.replaceAll(' ', '');
@@ -490,7 +507,30 @@ class _HomeViewState extends State<HomeView> {
                       dev.deviceName,
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    subtitle: Text('${dev.ipAddress}:${dev.port} • ${dev.osType}'),
+                    subtitle: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '${dev.ipAddress}:${dev.port} • ${dev.osType}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (UnattendedStorage.hasSavedPassword(dev.deviceId) ||
+                            UnattendedStorage.hasSavedPassword(dev.ipAddress)) ...[
+                          const SizedBox(width: 6),
+                          const Icon(Icons.vpn_key, size: 14, color: Colors.amber),
+                          const Text(
+                            ' Saved',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.amber,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                     trailing: ElevatedButton(
                       key: Key('connect_button_${dev.deviceId}'),
                       onPressed: () => _showPinDialog(dev),

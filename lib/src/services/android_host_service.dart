@@ -57,6 +57,7 @@ class AndroidHostService {
 
   bool _isRunning = false;
   String _currentPin = '';
+  String? _unattendedPassword;
   int _port = defaultPort;
   String _deviceId = '';
   String _deviceName = '';
@@ -81,6 +82,7 @@ class AndroidHostService {
 
   bool get isRunning => _isRunning;
   String get currentPin => _currentPin;
+  String? get unattendedPassword => _unattendedPassword;
   int get port => _port;
   String get deviceId => _deviceId;
   String get deviceName => _deviceName;
@@ -105,6 +107,7 @@ class AndroidHostService {
     InternetAddress? bindAddress,
     int port = defaultPort,
     String? pin,
+    String? unattendedPassword,
     String? deviceId,
     String? deviceName,
     bool enableUdpBeacon = true,
@@ -113,6 +116,7 @@ class AndroidHostService {
 
     _port = port;
     _currentPin = pin ?? generatePin();
+    _unattendedPassword = unattendedPassword;
     _deviceId = deviceId ?? generateDeviceId();
     _deviceName = deviceName ?? 'Android-Host';
     _framesSent = 0;
@@ -270,9 +274,18 @@ class AndroidHostService {
 
   void _handleAuthVerify(_HostClient client, Map<String, dynamic> json) {
     final clientPin = json['pin']?.toString().trim() ?? '';
+    final clientPassword = json['password']?.toString().trim();
+    final candidate = (clientPassword != null && clientPassword.isNotEmpty)
+        ? clientPassword
+        : clientPin;
     final clientE2ee = json['e2ee'] == true;
 
-    if (clientPin == _currentPin.trim()) {
+    final isPinMatch = candidate == _currentPin.trim();
+    final isUnattendedMatch = _unattendedPassword != null &&
+        _unattendedPassword!.isNotEmpty &&
+        candidate == _unattendedPassword!.trim();
+
+    if (isPinMatch || isUnattendedMatch) {
       client.isAuthenticated = true;
       client.isE2ee = clientE2ee;
 
@@ -290,13 +303,15 @@ class AndroidHostService {
         'type': 'auth_ok',
         'session_token': sessionToken,
         'e2ee': clientE2ee,
+        'unattended': isUnattendedMatch && !isPinMatch,
       });
       client.socket.add(authOk);
     } else {
       client.remainingAttempts = max(0, client.remainingAttempts - 1);
+      final hasUnattended = _unattendedPassword != null && _unattendedPassword!.isNotEmpty;
       final authFailed = jsonEncode({
         'type': 'auth_failed',
-        'reason': 'Invalid PIN',
+        'reason': hasUnattended ? 'Invalid PIN or Unattended Password' : 'Invalid PIN',
         'remaining_attempts': client.remainingAttempts,
       });
       client.socket.add(authFailed);

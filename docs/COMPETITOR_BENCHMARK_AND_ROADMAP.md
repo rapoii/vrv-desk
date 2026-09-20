@@ -15,7 +15,7 @@
 | **Audio Streaming** | WASAPI + Android 10+ Internal 48kHz Opus | WASAPI Loopback (PC Only) | WASAPI Loopback (PC Only) | Virtual Audio (PC Only) | Virtual Sink Loopback (PC Only) |
 | **Bi-directional Clipboard** | ✅ **Ada (Auto Sync & Echo-Free)** | ✅ Ada (Teks & File) | ✅ Ada | ✅ Ada | ✅ Ada (Teks) |
 | **File Transfer Manager** | ❌ *Belum Ada* | ✅ Ada (Dedicated UI) | ✅ Ada (Dual Panel) | ✅ Ada (Dual Panel) | ❌ Tidak Ada (Hanya P2P) |
-| **Unattended Access** | ❌ Dynamic PIN Saja | ✅ Password Tetap + 2FA | ✅ Password Tetap + 2FA | ✅ Whitelist + Security | ✅ Akun Permanen |
+| **Unattended Access** | ✅ **Ada (Permanent Password + Salt & Dual Auth)** | ✅ Password Tetap + 2FA | ✅ Password Tetap + 2FA | ✅ Whitelist + Security | ✅ Akun Permanen |
 | **Multi-Monitor Switcher** | ❌ Primary Screen Saja | ✅ Multi-Display Switch | ✅ Multi-Tab Display | ✅ Multi-Monitor Switch | ✅ Virtual / Phys Switch |
 | **UAC Elevation & Service** | ❌ User Session Saja | ✅ Windows Service | ✅ Windows Service | ✅ Windows Service | ✅ System Service |
 | **Virtual Display Driver** | ❌ Butuh Monitor Nyala | ✅ IddSampleDriver | ✅ Display Driver | ✅ Virtual Display | ✅ Parsec VDD / Idd |
@@ -81,10 +81,14 @@
 - [x] Flutter Client automatic background clipboard sync timer, auto-sync toggle, dan echo prevention pada `mirror_view.dart`.
 - [x] Verifikasi live e2e python test (`test_e2e_clipboard.py`) dan Flutter widget test suite (127/127 tests passing).
 
-### Phase 20: Unattended Access (Static Password)
-- [ ] Tambahkan konfigurasi `unattended_enabled` dan hash password `unattended_password_hash` (Argon2id) pada file config lokal `%APPDATA%\VrVDesk\config.toml`.
-- [ ] Perbarui handshake auth pada `rust/src/pairing.rs` agar memvalidasi PIN dinamis atau Password Statis.
-- [ ] Tambahkan toggle *"Enable Unattended Access"* dan form penyetelan password pada GUI `vrv_desk.rs` dan dialog Flutter.
+### Phase 20: Unattended Access (Static Password) - [x] **Completed & Verified**
+- [x] Konfigurasi permanen `UnattendedConfig` dengan SHA-256 + 16-byte random salt pada `%LOCALAPPDATA%\VrVDesk\unattended.json` (`rust/src/unattended.rs`).
+- [x] Dual-authentication handshake gatekeeper (validasi PIN dinamis ATAU password tetap) pada `rust/src/auth.rs`.
+- [x] Tombol interaktif & indikator status Unattended Access pada Win32 Desktop Host GUI (`rust/src/bin/vrv_desk.rs`).
+- [x] Dukungan permanent password pada Android Host mode (`android_host_service.dart`).
+- [x] Dukungan PinDialog mode ganda (One-Time PIN vs Unattended Password) + checkbox "Remember password" pada Flutter (`pin_dialog.dart`).
+- [x] Penyimpanan lokal password per Device ID (`unattended_storage.dart`) dan auto-reconnect di `home_view.dart` & `mirror_view.dart`.
+- [x] Verifikasi pengujian: 136/136 tests passing (58 Rust + 78 Flutter) + Live Python E2E (`test_e2e_unattended.py`).
 
 ### Phase 21: Dedicated File Transfer Manager
 - [ ] Rancang protokol chunking file `FrameType::FileChunk = 0x06` (`VFIL`) dengan checksum Blake3/SHA256.

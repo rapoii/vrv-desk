@@ -32,6 +32,7 @@ const COLOR_CONSOLE_BG: u32 = 0x00120E0A;
 struct AppState {
     device_id: String,
     pin: Arc<std::sync::RwLock<String>>,
+    unattended: Arc<std::sync::RwLock<mirror_core::unattended::UnattendedConfig>>,
     host_name: String,
     telemetry: HostTelemetry,
     is_sharing: Arc<AtomicBool>,
@@ -49,11 +50,13 @@ const BTN_NEW_PIN: u32 = 2;
 const BTN_TOGGLE_HOST: u32 = 3;
 const BTN_CONNECT: u32 = 4;
 const BTN_CLEAR_LOG: u32 = 5;
+const BTN_UNATTENDED: u32 = 6;
 
 // Button Rectangles
 const RECT_BTN_COPY_ID: RECT = RECT { left: 420, top: 135, right: 510, bottom: 175 };
 const RECT_BTN_NEW_PIN: RECT = RECT { left: 420, top: 195, right: 510, bottom: 235 };
 const RECT_BTN_TOGGLE_HOST: RECT = RECT { left: 45, top: 255, right: 230, bottom: 295 };
+const RECT_BTN_UNATTENDED: RECT = RECT { left: 245, top: 255, right: 510, bottom: 295 };
 const RECT_BTN_CONNECT: RECT = RECT { left: 565, top: 255, right: 835, bottom: 295 };
 const RECT_BTN_CLEAR_LOG: RECT = RECT { left: 745, top: 405, right: 835, bottom: 430 };
 
@@ -136,6 +139,8 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 new_hover = Some(BTN_NEW_PIN);
             } else if point_in_rect(pt, RECT_BTN_TOGGLE_HOST) {
                 new_hover = Some(BTN_TOGGLE_HOST);
+            } else if point_in_rect(pt, RECT_BTN_UNATTENDED) {
+                new_hover = Some(BTN_UNATTENDED);
             } else if point_in_rect(pt, RECT_BTN_CONNECT) {
                 new_hover = Some(BTN_CONNECT);
             } else if point_in_rect(pt, RECT_BTN_CLEAR_LOG) {
@@ -173,6 +178,17 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     state.is_sharing.store(!current, Ordering::Relaxed);
                     let status = if !current { "resumed" } else { "paused" };
                     state.telemetry.add_log(format!("Screen Sharing is now {}", status));
+                    InvalidateRect(hwnd, None, BOOL(0));
+                } else if point_in_rect(pt, RECT_BTN_UNATTENDED) {
+                    let mut cfg = state.unattended.write().unwrap();
+                    let new_state = !cfg.enabled;
+                    cfg.enabled = new_state;
+                    if new_state && cfg.password_hash.is_none() {
+                        cfg.set_password("vrv2026");
+                    }
+                    let _ = cfg.save();
+                    let status = if new_state { "ENABLED (Pass: vrv2026)" } else { "DISABLED" };
+                    state.telemetry.add_log(format!("Unattended Access is now {}", status));
                     InvalidateRect(hwnd, None, BOOL(0));
                 } else if point_in_rect(pt, RECT_BTN_CLEAR_LOG) {
                     if let Ok(mut logs) = state.telemetry.log_messages.write() {
@@ -370,6 +386,15 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     };
     draw_button(hdc, &RECT_BTN_TOGGLE_HOST, toggle_text, toggle_bg, toggle_fg);
 
+    // Unattended Access Button
+    let is_unattended = state.unattended.read().unwrap().enabled;
+    let (unattended_text, unattended_bg, unattended_fg) = if is_unattended {
+        ("🔑 Unattended: ON", 0x001B2B15, COLOR_ACCENT_GREEN)
+    } else {
+        ("🔒 Unattended: OFF", if state.hover_button == Some(BTN_UNATTENDED) { 0x003D2E24 } else { 0x002B211A }, COLOR_TEXT_MUTED)
+    };
+    draw_button(hdc, &RECT_BTN_UNATTENDED, unattended_text, unattended_bg, unattended_fg);
+
     // Right Card: Connect to Remote
     let card_remote = RECT { left: 545, top: 85, right: 855, bottom: 310 };
     draw_rounded_card(hdc, &card_remote, COLOR_CARD, COLOR_CARD_BORDER);
@@ -474,12 +499,14 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pin_str = get_or_generate_pin(None);
     let pin = Arc::new(std::sync::RwLock::new(pin_str));
+    let unattended = Arc::new(std::sync::RwLock::new(mirror_core::unattended::UnattendedConfig::load()));
     let device_id = get_or_generate_device_id(None);
     let host_name = get_host_name();
     let telemetry = HostTelemetry::default();
     let is_sharing = Arc::new(AtomicBool::new(true));
 
     let server_pin = pin.clone();
+    let server_unattended = unattended.clone();
     let server_device_id = device_id.clone();
     let server_host_name = host_name.clone();
     let server_telem = telemetry.clone();
@@ -503,6 +530,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 53211,
                 signal_url,
                 server_telem,
+                Some(server_unattended),
             )
             .await;
         });
@@ -512,6 +540,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         APP_STATE = Some(AppState {
             device_id,
             pin,
+            unattended,
             host_name,
             telemetry,
             is_sharing,

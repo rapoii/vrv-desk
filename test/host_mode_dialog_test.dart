@@ -91,6 +91,7 @@ class FakeAndroidHostService extends AndroidHostService {
     dynamic bindAddress,
     int port = AndroidHostService.defaultPort,
     String? pin,
+    String? unattendedPassword,
     String? deviceId,
     String? deviceName,
     bool enableUdpBeacon = true,

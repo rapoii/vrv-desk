@@ -1099,10 +1099,14 @@ Rincian spesifikasi teknis dan audit riset pasar terhadap RustDesk, AnyDesk, dan
   - [x] Android Host bi-directional clipboard sync listener & broadcast (`android_host_service.dart`)
   - [x] Flutter Client automatic background clipboard sync timer, auto-sync toggle, and echo prevention (`mirror_view.dart`)
   - [x] E2E integration test suite & widget tests (127/127 tests passing)
-- [ ] **Phase 20: Unattended Access (Static Password / Hash Auth)**
-  - [ ] Simpan argon2id hash password di `%APPDATA%\VrVDesk\config.toml`
-  - [ ] Dukungan auth PIN dinamis ATAU password tetap di `rust/src/pairing.rs`
-  - [ ] Opsi toggle di GUI `vrv_desk.rs`
+- [x] **Phase 20: Unattended Access (Static Password / Hash Auth) - Completed & Verified**
+  - [x] Persistent static password storage with SHA-256 + 16-byte random salt (`rust/src/unattended.rs`)
+  - [x] Dual-authentication gatekeeper (Dynamic PIN OR Unattended Password) in `rust/src/auth.rs`
+  - [x] Interactive Unattended Access toggle & status in Win32 desktop GUI (`rust/src/bin/vrv_desk.rs`)
+  - [x] Android Host support for permanent unattended password (`android_host_service.dart`)
+  - [x] Flutter PinDialog dual-mode (PIN vs Unattended Password) with "Remember password" checkbox (`pin_dialog.dart`)
+  - [x] Persistent client saved password store per device ID (`unattended_storage.dart`) and auto-fill in `home_view.dart` & `mirror_view.dart`
+  - [x] Comprehensive test suites: 136/136 tests passing (58 Rust + 78 Flutter) + Live Python E2E (`test_e2e_unattended.py`)
 - [ ] **Phase 21: Dedicated Dual-Pane File Transfer (`VFIL`)**
   - [ ] Protokol chunking file biner aman
   - [ ] UI explorer file manager di Flutter & Win32

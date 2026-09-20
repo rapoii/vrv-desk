@@ -133,9 +133,18 @@ pub async fn run_host_server_loop(
     port: u16,
     signal_url: Option<String>,
     telemetry: HostTelemetry,
+    unattended: Option<Arc<std::sync::RwLock<crate::unattended::UnattendedConfig>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let unattended_arc = unattended.unwrap_or_else(|| {
+        Arc::new(std::sync::RwLock::new(crate::unattended::UnattendedConfig::load()))
+    });
     let initial_pin = { pin.read().unwrap().clone() };
     telemetry.add_log(format!("Starting VrV Desk Host (Device ID: {})...", format_six_digit_display(&device_id)));
+    if unattended_arc.read().unwrap().enabled {
+        telemetry.add_log("Unattended Access: ACTIVE (Permanent password set)".to_string());
+    } else {
+        telemetry.add_log("Unattended Access: Disabled (PIN only)".to_string());
+    }
 
     let stun_endpoint = match query_stun(DEFAULT_STUN_SERVER).await {
         Ok(addr) => Some(addr.to_string()),
@@ -160,8 +169,9 @@ pub async fn run_host_server_loop(
         let sig_pin = pin.clone();
         let sig_stun = stun_endpoint.clone();
         let sig_telem = telemetry.clone();
+        let sig_unattended = unattended_arc.clone();
         tokio::spawn(async move {
-            run_signal_client(url, sig_device_id, sig_host_name, sig_stun, sig_pin, sig_telem).await;
+            run_signal_client(url, sig_device_id, sig_host_name, sig_stun, sig_pin, sig_telem, sig_unattended).await;
         });
     }
 
@@ -174,6 +184,7 @@ pub async fn run_host_server_loop(
                 let pin_clone = pin.clone();
                 let host_name_clone = host_name.clone();
                 let telem_clone = telemetry.clone();
+                let unattended_clone = unattended_arc.clone();
 
                 tokio::spawn(async move {
                     telem_clone.is_connected.store(true, Ordering::Relaxed);
@@ -195,6 +206,7 @@ pub async fn run_host_server_loop(
                         pin_clone,
                         host_name_clone,
                         telem_clone.clone(),
+                        Some(unattended_clone),
                     )
                     .await
                     {
@@ -227,6 +239,7 @@ async fn run_signal_client(
     stun_endpoint: Option<String>,
     pin: Arc<std::sync::RwLock<String>>,
     telemetry: HostTelemetry,
+    unattended: Arc<std::sync::RwLock<crate::unattended::UnattendedConfig>>,
 ) {
     loop {
         if !telemetry.is_running.load(Ordering::Relaxed) {
@@ -286,6 +299,7 @@ async fn run_signal_client(
                     pin.clone(),
                     host_name.clone(),
                     telemetry.clone(),
+                    Some(unattended.clone()),
                 )
                 .await;
 
@@ -306,6 +320,7 @@ pub async fn handle_streaming_session<S>(
     pin: Arc<std::sync::RwLock<String>>,
     host_name: String,
     telemetry: HostTelemetry,
+    unattended: Option<Arc<std::sync::RwLock<crate::unattended::UnattendedConfig>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
@@ -313,11 +328,13 @@ where
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
     let current_pin = { pin.read().unwrap().clone() };
-    let (session_token, e2ee_enabled) = AuthGatekeeper::authenticate_stream(
+    let unattended_snapshot = unattended.as_ref().map(|u| u.read().unwrap().clone());
+    let (session_token, e2ee_enabled) = AuthGatekeeper::authenticate_stream_with_unattended(
         &mut ws_sender,
         &mut ws_receiver,
         &current_pin,
         &host_name,
+        unattended_snapshot.as_ref(),
     )
     .await?;
 
