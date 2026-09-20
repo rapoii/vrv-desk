@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/device.dart';
+import '../services/android_host_service.dart';
 import '../services/lan_discovery_service.dart';
+import '../widgets/host_mode_dialog.dart';
 import '../widgets/pin_dialog.dart';
 import '../widgets/qr_code_dialog.dart';
 import '../services/qr_pairing_service.dart';
@@ -15,6 +19,8 @@ class HomeView extends StatefulWidget {
   final void Function(DiscoveredDevice device, String pin)? onConnect;
   final String signalingUrl;
   final LanDiscoveryService? lanDiscoveryService;
+  final AndroidHostService? androidHostService;
+  final bool? isAndroidOverride;
 
   const HomeView({
     super.key,
@@ -23,6 +29,8 @@ class HomeView extends StatefulWidget {
     this.onConnect,
     this.signalingUrl = 'ws://10.0.2.2:53212',
     this.lanDiscoveryService,
+    this.androidHostService,
+    this.isAndroidOverride,
   });
 
   static bool is6DigitDeviceId(String input) {
@@ -70,6 +78,19 @@ class _HomeViewState extends State<HomeView> {
     if (oldWidget.initialDevices != widget.initialDevices) {
       _devices = List.from(widget.initialDevices);
     }
+  }
+
+  bool get _isAndroid =>
+      widget.isAndroidOverride ?? (!kIsWeb && Platform.isAndroid);
+
+  void _showHostModeDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => HostModeDialog(
+        hostService: widget.androidHostService,
+        deviceId: widget.myDeviceId,
+      ),
+    );
   }
 
   void _copyDeviceId() {
@@ -317,6 +338,25 @@ class _HomeViewState extends State<HomeView> {
                         ),
                       ],
                     ),
+                    if (_isAndroid) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          key: const Key('share_screen_button'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.teal.shade700,
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: _showHostModeDialog,
+                          icon: const Icon(Icons.screen_share),
+                          label: const Text(
+                            'Share My Screen (Host)',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
