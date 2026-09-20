@@ -26,6 +26,7 @@ class MainActivity : FlutterActivity() {
     private val videoChannelName = "com.vrv.desk/video"
     private val captureChannelName = "com.vrv.desk/capture"
     private val captureStreamChannelName = "com.vrv.desk/capture_stream"
+    private val accessibilityChannelName = "com.vrv.desk/accessibility"
 
     private var audioTrack: AudioTrack? = null
     private var opusDecoder: OpusAudioDecoder? = null
@@ -206,6 +207,76 @@ class MainActivity : FlutterActivity() {
                 }
             }
         )
+
+        // Accessibility MethodChannel ('com.vrv.desk/accessibility')
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, accessibilityChannelName).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isAccessibilityEnabled" -> {
+                    val enabled = checkAccessibilityPermission()
+                    result.success(enabled)
+                }
+                "openAccessibilitySettings" -> {
+                    try {
+                        val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to open accessibility settings: ${e.message}", e)
+                        result.error("INTENT_ERROR", e.message, null)
+                    }
+                }
+                "tap" -> {
+                    val x = (call.argument<Number>("x"))?.toFloat()
+                    val y = (call.argument<Number>("y"))?.toFloat()
+                    val service = InputAccessibilityService.sharedInstance
+                    if (service == null) {
+                        result.error("SERVICE_UNAVAILABLE", "InputAccessibilityService is not enabled or connected", null)
+                    } else if (x == null || y == null) {
+                        result.error("INVALID_ARGUMENT", "Coordinates x and y must not be null", null)
+                    } else {
+                        val dispatched = service.tap(x, y) { success ->
+                            // Handled synchronously by dispatch, but callback confirms gesture execution
+                        }
+                        result.success(dispatched)
+                    }
+                }
+                "swipe" -> {
+                    val x1 = (call.argument<Number>("x1"))?.toFloat()
+                    val y1 = (call.argument<Number>("y1"))?.toFloat()
+                    val x2 = (call.argument<Number>("x2"))?.toFloat()
+                    val y2 = (call.argument<Number>("y2"))?.toFloat()
+                    val duration = (call.argument<Number>("duration"))?.toLong() ?: 300L
+                    val service = InputAccessibilityService.sharedInstance
+                    if (service == null) {
+                        result.error("SERVICE_UNAVAILABLE", "InputAccessibilityService is not enabled or connected", null)
+                    } else if (x1 == null || y1 == null || x2 == null || y2 == null) {
+                        result.error("INVALID_ARGUMENT", "Coordinates x1, y1, x2, y2 must not be null", null)
+                    } else {
+                        val dispatched = service.swipe(x1, y1, x2, y2, duration) { success ->
+                            // Handled synchronously by dispatch
+                        }
+                        result.success(dispatched)
+                    }
+                }
+                "globalAction" -> {
+                    val action = call.argument<String>("action") ?: call.argument<String>("actionName")
+                    val service = InputAccessibilityService.sharedInstance
+                    if (service == null) {
+                        result.error("SERVICE_UNAVAILABLE", "InputAccessibilityService is not enabled or connected", null)
+                    } else if (action == null) {
+                        result.error("INVALID_ARGUMENT", "Action name must not be null", null)
+                    } else {
+                        val success = service.performGlobal(action)
+                        result.success(success)
+                    }
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -272,6 +343,44 @@ class MainActivity : FlutterActivity() {
             action = MediaProjectionService.ACTION_STOP
         }
         startService(serviceIntent)
+    }
+
+    private fun checkAccessibilityPermission(): Boolean {
+        // First check if our service singleton is directly connected
+        if (InputAccessibilityService.isServiceRunning) {
+            return true
+        }
+
+        // Also check Android Settings secure string for accessibility enabled services
+        try {
+            val expectedServiceName = "${packageName}/${InputAccessibilityService::class.java.canonicalName}"
+            val accessibilityEnabled = android.provider.Settings.Secure.getInt(
+                contentResolver,
+                android.provider.Settings.Secure.ACCESSIBILITY_ENABLED,
+                0
+            )
+            if (accessibilityEnabled == 1) {
+                val settingValue = android.provider.Settings.Secure.getString(
+                    contentResolver,
+                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                )
+                if (settingValue != null) {
+                    val splitter = android.text.TextUtils.SimpleStringSplitter(':')
+                    splitter.setString(settingValue)
+                    while (splitter.hasNext()) {
+                        val service = splitter.next()
+                        if (service.equals(expectedServiceName, ignoreCase = true) ||
+                            service.contains(InputAccessibilityService::class.java.simpleName)
+                        ) {
+                            return true
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking accessibility permission: ${e.message}", e)
+        }
+        return false
     }
 
     @Synchronized
