@@ -49,6 +49,10 @@ class MainActivity : FlutterActivity() {
     private var pendingCaptureResult: MethodChannel.Result? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // High-Performance ADB Bridge
+    private val adbBridgeChannelName = "com.vrv.desk/adb_bridge"
+    private lateinit var adbInputBridge: AdbInputBridge
+
     companion object {
         private const val TAG = "MainActivity"
         private const val MEDIA_PROJECTION_REQUEST_CODE = 1001
@@ -56,6 +60,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        adbInputBridge = AdbInputBridge(this)
 
         // Audio MethodChannel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
@@ -276,6 +282,62 @@ class MainActivity : FlutterActivity() {
                         val success = service.performGlobal(action)
                         result.success(success)
                     }
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+
+        // ADB Input Bridge MethodChannel ('com.vrv.desk/adb_bridge')
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, adbBridgeChannelName).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getAdbStatus" -> {
+                    Thread {
+                        val status = adbInputBridge.getAdbStatus()
+                        mainHandler.post {
+                            result.success(status)
+                        }
+                    }.start()
+                }
+                "tap" -> {
+                    val x = (call.argument<Number>("x"))?.toFloat() ?: 0f
+                    val y = (call.argument<Number>("y"))?.toFloat() ?: 0f
+                    val success = adbInputBridge.tap(x, y)
+                    result.success(success)
+                }
+                "swipe" -> {
+                    val x1 = (call.argument<Number>("x1"))?.toFloat() ?: 0f
+                    val y1 = (call.argument<Number>("y1"))?.toFloat() ?: 0f
+                    val x2 = (call.argument<Number>("x2"))?.toFloat() ?: 0f
+                    val y2 = (call.argument<Number>("y2"))?.toFloat() ?: 0f
+                    val duration = (call.argument<Number>("duration"))?.toInt() ?: 300
+                    val success = adbInputBridge.swipe(x1, y1, x2, y2, duration)
+                    result.success(success)
+                }
+                "keyevent" -> {
+                    val keyCode = (call.argument<Number>("keyCode"))?.toInt() ?: 0
+                    val success = adbInputBridge.keyevent(keyCode)
+                    result.success(success)
+                }
+                "globalAction" -> {
+                    val action = call.argument<String>("action") ?: ""
+                    val keyCode = when (action.lowercase()) {
+                        "home" -> AdbInputBridge.KEYCODE_HOME
+                        "back" -> AdbInputBridge.KEYCODE_BACK
+                        "recents", "app_switch" -> AdbInputBridge.KEYCODE_APP_SWITCH
+                        else -> 0
+                    }
+                    if (keyCode != 0) {
+                        result.success(adbInputBridge.keyevent(keyCode))
+                    } else {
+                        result.success(false)
+                    }
+                }
+                "text" -> {
+                    val text = call.argument<String>("text") ?: ""
+                    val success = adbInputBridge.text(text)
+                    result.success(success)
                 }
                 else -> {
                     result.notImplemented()
@@ -570,6 +632,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        adbInputBridge.close()
         stopCaptureService()
         stopAudioTrack()
         disposeVideo()
