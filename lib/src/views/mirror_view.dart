@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/audio_stream_player.dart';
 import '../services/video_stream_player.dart';
+import '../services/e2ee_transport.dart';
 import '../widgets/pin_dialog.dart';
 import '../widgets/shortcut_bar.dart';
 
@@ -54,6 +55,8 @@ class _MirrorViewState extends State<MirrorView> {
 
   late final AudioStreamPlayer _audioPlayer;
   late final VideoStreamPlayer _videoPlayer;
+  E2eeTransportSession? _e2eeSession;
+  bool _isE2eeActive = false;
   int? _textureId;
   bool _isVideoDecoderInitialized = false;
   bool _isAudioMuted = false;
@@ -138,20 +141,30 @@ class _MirrorViewState extends State<MirrorView> {
       }
 
       ws.listen(
-        (data) {
+        (data) async {
           if (data is List<int>) {
-            if (AudioStreamPlayer.isVaudPacket(data)) {
-              if (_isAuthenticated) {
-                _audioPlayer.handleVaudPacket(data);
+            List<int> payload = data;
+            if (E2eeTransportSession.isE2eePacket(payload) && _e2eeSession != null) {
+              try {
+                payload = await _e2eeSession!.decrypt(Uint8List.fromList(payload));
+              } catch (e) {
+                debugPrint('E2EE decryption error: $e');
+                return;
               }
-            } else if (VideoStreamPlayer.isVh24Packet(data)) {
+            }
+
+            if (AudioStreamPlayer.isVaudPacket(payload)) {
               if (_isAuthenticated) {
-                _handleVh24Packet(data);
+                _audioPlayer.handleVaudPacket(payload);
+              }
+            } else if (VideoStreamPlayer.isVh24Packet(payload)) {
+              if (_isAuthenticated) {
+                _handleVh24Packet(payload);
               }
             } else {
               setState(() {
                 _isConnected = true;
-                _currentFrame = Uint8List.fromList(data);
+                _currentFrame = Uint8List.fromList(payload);
                 _frameCount++;
                 _videoCodecName = 'JPEG';
               });
@@ -192,7 +205,16 @@ class _MirrorViewState extends State<MirrorView> {
       if (!_isAuthenticated && event['type'] != 'auth_verify') {
         return;
       }
-      _socket!.add(jsonEncode(event));
+      final jsonStr = jsonEncode(event);
+      if (_e2eeSession != null && _isAuthenticated) {
+        _e2eeSession!.encrypt(Uint8List.fromList(utf8.encode(jsonStr))).then((enc) {
+          _socket?.add(enc);
+        }).catchError((e) {
+          _socket?.add(jsonStr);
+        });
+      } else {
+        _socket!.add(jsonStr);
+      }
     }
   }
 
@@ -204,6 +226,7 @@ class _MirrorViewState extends State<MirrorView> {
     _sendInput({
       'type': 'auth_verify',
       'pin': pin,
+      'e2ee': true,
     });
   }
 
@@ -289,18 +312,28 @@ class _MirrorViewState extends State<MirrorView> {
           _handleAuthRequired();
         } else if (type == 'auth_ok') {
           _dismissPinDialog();
+          final token = json['session_token'] as String?;
+          final bool isE2ee = json['e2ee'] == true;
+          if (token != null && isE2ee) {
+            _e2eeSession = E2eeTransportSession.fromToken(token);
+          }
           setState(() {
             _isAuthenticated = true;
             _isAuthenticating = false;
             _authError = null;
-            _statusMessage = 'Connected & Authenticated';
+            _isE2eeActive = _e2eeSession != null;
+            _statusMessage = _isE2eeActive
+                ? 'Connected (🔒 E2EE Encrypted)'
+                : 'Connected & Authenticated';
           });
           if (mounted) {
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Connected & Authenticated with Host PC'),
-                duration: Duration(seconds: 2),
+              SnackBar(
+                content: Text(_isE2eeActive
+                    ? 'Connected & Authenticated (🔒 E2EE Encrypted)'
+                    : 'Connected & Authenticated with Host PC'),
+                duration: const Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
               ),
             );

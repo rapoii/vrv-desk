@@ -149,3 +149,60 @@ impl H264VideoEncoder {
         self.encode_rgb(width, height, &rgb)
     }
 }
+
+unsafe impl Send for VideoEncoder {}
+
+pub enum VideoEncoder {
+    #[cfg(windows)]
+    HardwareMft(crate::mft_encoder::MftH264Encoder),
+    SoftwareOpenH264(H264VideoEncoder),
+}
+
+impl VideoEncoder {
+    pub fn new(width: u32, height: u32, bitrate: u32, framerate: f32) -> Result<Self, String> {
+        #[cfg(windows)]
+        {
+            match crate::mft_encoder::MftH264Encoder::new(width, height, bitrate, framerate) {
+                Ok(mft) => {
+                    println!("🚀 Video compression: Hardware MFT (NVENC / Intel QSV)");
+                    return Ok(Self::HardwareMft(mft));
+                }
+                Err(e) => {
+                    eprintln!(
+                        "⚠️ Hardware MFT encoder unavailable ({}), falling back to OpenH264 software encoder",
+                        e
+                    );
+                }
+            }
+        }
+
+        let sw = H264VideoEncoder::new(width, height, bitrate, framerate)?;
+        println!("🚀 Video compression: Cisco OpenH264 ScreenContentRealTime");
+        Ok(Self::SoftwareOpenH264(sw))
+    }
+
+    pub fn encode_bgra(
+        &mut self,
+        width: u32,
+        height: u32,
+        bgra_data: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        match self {
+            #[cfg(windows)]
+            Self::HardwareMft(ref mut mft) => {
+                match mft.encode_bgra(width, height, bgra_data) {
+                    Ok(bytes) => Ok(bytes),
+                    Err(_) => {
+                        // Fallback to software encoding if a single frame fails
+                        let mut sw = H264VideoEncoder::new(width, height, 2_500_000, 60.0)?;
+                        let bytes = sw.encode_bgra(width, height, bgra_data)?;
+                        *self = Self::SoftwareOpenH264(sw);
+                        Ok(bytes)
+                    }
+                }
+            }
+            Self::SoftwareOpenH264(ref mut sw) => sw.encode_bgra(width, height, bgra_data),
+        }
+    }
+}
+

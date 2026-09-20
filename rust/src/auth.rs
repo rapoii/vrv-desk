@@ -15,9 +15,17 @@ pub enum AuthMessage {
         version: String,
     },
     #[serde(rename = "auth_verify")]
-    AuthVerify { pin: String },
+    AuthVerify {
+        pin: String,
+        #[serde(default)]
+        e2ee: bool,
+    },
     #[serde(rename = "auth_ok")]
-    AuthOk { session_token: String },
+    AuthOk {
+        session_token: String,
+        #[serde(default)]
+        e2ee: bool,
+    },
     #[serde(rename = "auth_failed")]
     AuthFailed {
         reason: String,
@@ -33,7 +41,7 @@ impl AuthGatekeeper {
         ws_receiver: &mut futures_util::stream::SplitStream<tokio_tungstenite::WebSocketStream<S>>,
         expected_pin: &str,
         host_name: &str,
-    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>>
+    ) -> Result<(String, bool), Box<dyn std::error::Error + Send + Sync>>
     where
         S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
     {
@@ -66,19 +74,22 @@ impl AuthGatekeeper {
 
             match msg {
                 Message::Text(text) => {
-                    if let Ok(AuthMessage::AuthVerify { pin: client_pin }) =
-                        serde_json::from_str::<AuthMessage>(&text)
+                    if let Ok(AuthMessage::AuthVerify {
+                        pin: client_pin,
+                        e2ee: client_e2ee,
+                    }) = serde_json::from_str::<AuthMessage>(&text)
                     {
                         if client_pin.trim() == expected_pin {
                             let token_bytes: [u8; 16] = rand::random();
                             let session_token = hex::encode(token_bytes);
                             let ok_msg = AuthMessage::AuthOk {
                                 session_token: session_token.clone(),
+                                e2ee: client_e2ee,
                             };
                             ws_sender
                                 .send(Message::Text(serde_json::to_string(&ok_msg)?.into()))
                                 .await?;
-                            return Ok(session_token);
+                            return Ok((session_token, client_e2ee));
                         } else {
                             remaining_attempts = remaining_attempts.saturating_sub(1);
                             if remaining_attempts > 0 {

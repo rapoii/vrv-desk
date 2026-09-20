@@ -313,7 +313,7 @@ where
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
     // Authenticate client with PIN gatekeeper before starting capturer or streaming tasks
-    let _session_token = AuthGatekeeper::authenticate_stream(
+    let (session_token, e2ee_enabled) = AuthGatekeeper::authenticate_stream(
         &mut ws_sender,
         &mut ws_receiver,
         &pin,
@@ -321,7 +321,27 @@ where
     )
     .await?;
 
-    println!("✅ Peer {} authenticated successfully!", peer_desc);
+    if e2ee_enabled {
+        println!("🔒 E2EE Session established with peer {} (ChaCha20-Poly1305 AEAD active)", peer_desc);
+    } else {
+        println!("✅ Peer {} authenticated successfully (Standard stream)", peer_desc);
+    }
+
+    let mut e2ee_frame_session = if e2ee_enabled {
+        Some(mirror_core::transport::SecureTransportSession::from_token(&session_token))
+    } else {
+        None
+    };
+    let mut e2ee_audio_session = if e2ee_enabled {
+        Some(mirror_core::transport::SecureTransportSession::from_token(&session_token))
+    } else {
+        None
+    };
+    let mut e2ee_input_session = if e2ee_enabled {
+        Some(mirror_core::transport::SecureTransportSession::from_token(&session_token))
+    } else {
+        None
+    };
 
     // Initialize capturer only after successful authentication
     let mut capturer = HybridScreenCapturer::new().map_err(|e| format!("Capturer init failed: {}", e))?;
@@ -333,13 +353,10 @@ where
     let screen_w = capturer.screen_width();
     let screen_h = capturer.screen_height();
 
-    let mut h264_encoder = match mirror_core::video::H264VideoEncoder::new(screen_w, screen_h, 2_500_000, 60.0) {
-        Ok(enc) => {
-            println!("🚀 Video compression engine: H.264 ScreenContentRealTime (VH24 protocol, target 2.5 Mbps @ 60 FPS)");
-            Some(enc)
-        }
+    let mut h264_encoder = match mirror_core::video::VideoEncoder::new(screen_w, screen_h, 2_500_000, 60.0) {
+        Ok(enc) => Some(enc),
         Err(e) => {
-            println!("⚠️ H.264 video encoder init failed ({}), falling back to JPEG frames", e);
+            println!("⚠️ Video encoder init failed ({}), falling back to JPEG frames", e);
             None
         }
     };
@@ -362,8 +379,16 @@ where
 
             match frame_res {
                 Ok(Some(frame_bytes)) => {
+                    let out_bytes = if let Some(ref mut sec) = e2ee_frame_session {
+                        match sec.encrypt(&frame_bytes) {
+                            Ok(enc) => enc,
+                            Err(_) => frame_bytes,
+                        }
+                    } else {
+                        frame_bytes
+                    };
                     let mut sender = ws_sender_frame.lock().await;
-                    if sender.send(Message::Binary(frame_bytes.into())).await.is_err() {
+                    if sender.send(Message::Binary(out_bytes.into())).await.is_err() {
                         is_running_frame.store(false, std::sync::atomic::Ordering::Relaxed);
                         break;
                     }
@@ -422,8 +447,16 @@ where
         while is_running_audio.load(std::sync::atomic::Ordering::Relaxed) {
             match capturer.read_packet_timeout(Duration::from_millis(50)) {
                 Some(packet) => {
+                    let out_bytes = if let Some(ref mut sec) = e2ee_audio_session {
+                        match sec.encrypt(&packet) {
+                            Ok(enc) => enc,
+                            Err(_) => packet,
+                        }
+                    } else {
+                        packet
+                    };
                     let mut sender = ws_sender_audio.lock().await;
-                    if sender.send(Message::Binary(packet.into())).await.is_err() {
+                    if sender.send(Message::Binary(out_bytes.into())).await.is_err() {
                         is_running_audio.store(false, std::sync::atomic::Ordering::Relaxed);
                         break;
                     }
@@ -442,10 +475,40 @@ where
             if !is_running_input.load(std::sync::atomic::Ordering::Relaxed) {
                 break;
             }
-            match msg {
-                Ok(Message::Text(text)) => {
-                    if let Ok(input) = serde_json::from_str::<ClientInput>(&text) {
-                        match input {
+            let text_opt: Option<String> = match msg {
+                Ok(Message::Text(text)) => Some(text.to_string()),
+                Ok(Message::Binary(bin_data)) => {
+                    if let Some(ref mut sec) = e2ee_input_session {
+                        if mirror_core::transport::SecureTransportSession::is_e2ee_packet(&bin_data) {
+                            match sec.decrypt(&bin_data) {
+                                Ok(plain) => String::from_utf8(plain).ok(),
+                                Err(e) => {
+                                    eprintln!("⚠️ E2EE input decryption failed: {}", e);
+                                    None
+                                }
+                            }
+                        } else {
+                            String::from_utf8(bin_data.to_vec()).ok()
+                        }
+                    } else {
+                        String::from_utf8(bin_data.to_vec()).ok()
+                    }
+                }
+                Ok(Message::Close(_)) => {
+                    is_running_input.store(false, std::sync::atomic::Ordering::Relaxed);
+                    break;
+                }
+                Err(e) => {
+                    eprintln!("WebSocket read error: {:?}", e);
+                    is_running_input.store(false, std::sync::atomic::Ordering::Relaxed);
+                    break;
+                }
+                _ => None,
+            };
+
+            if let Some(text) = text_opt {
+                if let Ok(input) = serde_json::from_str::<ClientInput>(&text) {
+                    match input {
                             ClientInput::MouseMove { x, y } => {
                                 let _ = inject_input(
                                     &InputEvent::MouseMove { x, y },
@@ -527,18 +590,7 @@ where
                         eprintln!("Failed to parse input: {}", text);
                     }
                 }
-                Ok(Message::Close(_)) => {
-                    is_running_input.store(false, std::sync::atomic::Ordering::Relaxed);
-                    break;
-                }
-                Err(e) => {
-                    eprintln!("WebSocket read error: {:?}", e);
-                    is_running_input.store(false, std::sync::atomic::Ordering::Relaxed);
-                    break;
-                }
-                _ => {}
             }
-        }
         is_running_input.store(false, std::sync::atomic::Ordering::Relaxed);
     });
 

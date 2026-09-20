@@ -522,7 +522,7 @@ impl HybridScreenCapturer {
     pub fn capture_h264(
         &mut self,
         timeout_ms: u32,
-        encoder: &mut crate::video::H264VideoEncoder,
+        encoder: &mut crate::video::VideoEncoder,
     ) -> Result<Option<Vec<u8>>, String> {
         #[cfg(windows)]
         {
