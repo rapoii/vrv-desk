@@ -297,6 +297,54 @@ class AndroidHostService {
         }));
         return;
       }
+      if (type == 'get_monitors') {
+        client.socket.add(jsonEncode({
+          'type': 'monitors_list',
+          'monitors': [
+            {
+              'index': 0,
+              'name': 'Display 1 (Android Screen)',
+              'width': 1080,
+              'height': 2400,
+              'left': 0,
+              'top': 0,
+              'right': 1080,
+              'bottom': 2400,
+              'is_primary': true,
+            }
+          ],
+        }));
+        return;
+      }
+      if (type == 'switch_monitor') {
+        client.socket.add(jsonEncode({
+          'type': 'switch_monitor_res',
+          'success': true,
+          'index': 0,
+          'width': 1080,
+          'height': 2400,
+          'error': null,
+        }));
+        return;
+      }
+      if (type == 'set_privacy_mode') {
+        client.socket.add(jsonEncode({
+          'type': 'privacy_mode_res',
+          'enabled': json['enabled'] ?? false,
+          'success': false,
+          'error': 'Privacy mode screen blanking not supported on Android',
+        }));
+        return;
+      }
+      if (type == 'system_action') {
+        client.socket.add(jsonEncode({
+          'type': 'system_action_res',
+          'action': json['action'] ?? '',
+          'success': false,
+          'message': 'System action not supported on Android',
+        }));
+        return;
+      }
 
       _dispatchRemoteInput(json);
     } catch (e) {

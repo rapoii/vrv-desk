@@ -20,6 +20,9 @@ class ShortcutBar extends StatelessWidget {
     {'label': 'Desktop', 'id': 'show_desktop'},
     {'label': 'Ctrl+Alt+Del', 'id': 'ctrl_alt_del'},
     {'label': '🛡️ Elevate', 'id': 'elevate'},
+    {'label': '🖥️ Monitor', 'id': 'switch_monitor'},
+    {'label': '🔒 Privacy', 'id': 'privacy_mode'},
+    {'label': '🔒 Lock PC', 'id': 'lock_pc'},
   ];
 
   @override

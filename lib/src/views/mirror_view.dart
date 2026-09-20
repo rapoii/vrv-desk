@@ -96,6 +96,7 @@ class _MirrorViewState extends State<MirrorView> {
   int? _textureId;
   bool _isVideoDecoderInitialized = false;
   bool _isAudioMuted = false;
+  bool _privacyModeActive = false;
 
   @override
   void initState() {
@@ -349,6 +350,15 @@ class _MirrorViewState extends State<MirrorView> {
       _sendInput({'type': 'system_sas'});
     } else if (shortcutName == 'elevate') {
       _sendInput({'type': 'system_elevate'});
+    } else if (shortcutName == 'switch_monitor') {
+      _sendInput({'type': 'get_monitors'});
+    } else if (shortcutName == 'privacy_mode') {
+      _privacyModeActive = !_privacyModeActive;
+      _sendInput({'type': 'set_privacy_mode', 'enabled': _privacyModeActive});
+    } else if (shortcutName == 'lock_pc') {
+      _sendInput({'type': 'system_action', 'action': 'lock'});
+    } else if (shortcutName == 'task_manager') {
+      _sendInput({'type': 'system_action', 'action': 'taskmgr'});
     } else {
       _sendInput({
         'type': 'shortcut',
@@ -481,6 +491,58 @@ class _MirrorViewState extends State<MirrorView> {
               ),
             );
           }
+        } else if (type == 'monitors_list') {
+          final monitors = json['monitors'] as List<dynamic>? ?? [];
+          _showMonitorSelectorDialog(monitors);
+        } else if (type == 'switch_monitor_res') {
+          final success = json['success'] == true;
+          final idx = json['index'] ?? 0;
+          final w = json['width'] ?? 0;
+          final h = json['height'] ?? 0;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(success
+                    ? '🖥️ Switched to Display ${idx + 1} ($w x $h)'
+                    : '⚠️ Failed to switch display: ${json['error']}'),
+                backgroundColor: success ? const Color(0xFF10B981) : Colors.red,
+                duration: const Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } else if (type == 'privacy_mode_res') {
+          final enabled = json['enabled'] == true;
+          final success = json['success'] == true;
+          setState(() {
+            _privacyModeActive = enabled && success;
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(success
+                    ? '🔒 Privacy Mode: ${enabled ? 'ON (Screen blanked & physical inputs locked)' : 'OFF'}'
+                    : '⚠️ Failed to toggle privacy mode: ${json['error']}'),
+                backgroundColor: (enabled && success) ? const Color(0xFF6366F1) : const Color(0xFF374151),
+                duration: const Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } else if (type == 'system_action_res') {
+          final success = json['success'] == true;
+          final action = json['action'] ?? '';
+          final message = json['message'] ?? '';
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('⚙️ Action [$action]: $message'),
+                backgroundColor: success ? const Color(0xFF10B981) : Colors.red,
+                duration: const Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
         } else if (type == 'clipboard_sync' && json['text'] is String) {
           final text = json['text'] as String;
           _lastRemoteClipboard = text;
@@ -500,6 +562,83 @@ class _MirrorViewState extends State<MirrorView> {
         }
       }
     } catch (_) {}
+  }
+
+  void _showMonitorSelectorDialog(List<dynamic> monitors) {
+    if (!mounted || monitors.isEmpty) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E2028),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      '🖥️ Select Active Display',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white70),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ...monitors.map((m) {
+                  final map = m as Map<String, dynamic>;
+                  final idx = map['index'] as int? ?? 0;
+                  final name = map['name'] as String? ?? 'Display ${idx + 1}';
+                  final w = map['width'] ?? 0;
+                  final h = map['height'] ?? 0;
+                  final isPrimary = map['is_primary'] == true;
+
+                  return Card(
+                    color: const Color(0xFF282B36),
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.monitor,
+                        color: isPrimary ? const Color(0xFF10B981) : Colors.white70,
+                      ),
+                      title: Text(
+                        name,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        '$w x $h ${isPrimary ? '(Primary)' : ''}',
+                        style: TextStyle(
+                          color: isPrimary ? const Color(0xFF10B981) : Colors.white54,
+                          fontSize: 12,
+                        ),
+                      ),
+                      trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _sendInput({'type': 'switch_monitor', 'index': idx});
+                      },
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _startClipboardSync() {

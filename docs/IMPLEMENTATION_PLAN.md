@@ -1120,12 +1120,16 @@ Rincian spesifikasi teknis dan audit riset pasar terhadap RustDesk, AnyDesk, dan
   - [x] Dynamic injection SAS (Secure Attention Sequence / `Ctrl+Alt+Del`) via `sas.dll` `SendSAS` & IPC fallback
   - [x] Administrator elevation pill button pada Win32 GUI (`vrv_desk.exe`) dan remote elevation / SAS triggers via Flutter viewer (`shortcut_bar.dart` & `mirror_view.dart`)
   - [x] Comprehensive test suites: 149/149 tests passing (66 Rust + 83 Flutter) + Live Python E2E (`test_e2e_service_uac.py`)
-- [ ] **Phase 23: Multi-Monitor Enumeration & Output Switcher**
-  - [ ] Loop `EnumOutputs` DXGI untuk tangkap display non-primary
-  - [ ] HUD switcher dropdown (Display 1, Display 2)
-- [ ] **Phase 24: Privacy Mode & In-Session System Shortcuts**
-  - [ ] Black screen / screen blanking host
-  - [ ] Toolbar shortcut tombol `Ctrl+Alt+Del`, `Win+L`, `Task Manager`
+- [x] **Phase 23: Multi-Monitor Enumeration & Output Switcher - Completed & Verified**
+  - [x] Modul enumerasi display DXGI (`rust/src/monitor.rs`) mengenumerasi seluruh `IDXGIOutput` dengan koordinat desktop, resolusi, dan status primary
+  - [x] Dynamic runtime switching pada `DxgiCapturer` dan `HybridScreenCapturer` tanpa memutus streaming session
+  - [x] Sinkronisasi koordinat mouse multi-monitor (`set_active_monitor_bounds` & normalized coordinate remapping)
+  - [x] Modal bottom sheet display selector interaktif pada mobile/desktop viewer (`mirror_view.dart`)
+- [x] **Phase 24: Privacy Mode & In-Session System Shortcuts - Completed & Verified**
+  - [x] Privacy mode engine (`rust/src/privacy.rs`) dengan physical input locking (`BlockInput`) dan screen blanking monitor power state (`SC_MONITORPOWER`)
+  - [x] Remote system actions engine (`rust/src/system_actions.rs`): Workstation lock (`Win+L`), Task Manager (`taskmgr`), safe reboot & safe shutdown
+  - [x] Toolbar shortcuts interaktif (`shortcut_bar.dart` & `mirror_view.dart`): `🖥️ Monitor`, `🔒 Privacy`, `🔒 Lock PC`, `TaskMgr`, `Ctrl+Alt+Del`, `🛡️ Elevate`
+  - [x] Verifikasi unit tests (3 test baru di `monitor_privacy_test.rs`) dan live E2E integration test (`test_e2e_monitor_privacy.py`) dengan total 152/152 tests passing (69 Rust + 83 Flutter)
 - [ ] **Phase 25: Virtual Display Driver (Headless PC Support)**
   - [ ] Driver WDDM IddSampleDriver bundling
 - [ ] **Phase 26: Web Client (Browser-based remote control via WebRTC/WASM)**

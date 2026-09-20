@@ -23,15 +23,20 @@ pub struct DxgiCapturer {
     pub screen_height: u32,
     pub width: u32,
     pub height: u32,
+    pub current_monitor_index: u32,
     device: ID3D11Device,
     context: ID3D11DeviceContext,
-    duplication: IDXGIOutputDuplication,
+    duplication: Option<IDXGIOutputDuplication>,
     staging_texture: ID3D11Texture2D,
 }
 
 #[cfg(windows)]
 impl DxgiCapturer {
     pub fn new() -> Result<Self, String> {
+        Self::new_for_monitor(0)
+    }
+
+    pub fn new_for_monitor(monitor_index: u32) -> Result<Self, String> {
         unsafe {
             let mut device: Option<ID3D11Device> = None;
             let mut context: Option<ID3D11DeviceContext> = None;
@@ -74,8 +79,8 @@ impl DxgiCapturer {
                 .map_err(|e| format!("GetAdapter failed: {:?}", e))?;
 
             let output = adapter
-                .EnumOutputs(0)
-                .map_err(|e| format!("EnumOutputs(0) failed: {:?}", e))?;
+                .EnumOutputs(monitor_index)
+                .map_err(|e| format!("EnumOutputs({}) failed: {:?}", monitor_index, e))?;
 
             let output1: IDXGIOutput1 = output
                 .cast()
@@ -93,7 +98,7 @@ impl DxgiCapturer {
                 .abs() as u32;
 
             if width == 0 || height == 0 {
-                return Err(format!("Invalid desktop dimensions: {}x{}", width, height));
+                return Err(format!("Invalid desktop dimensions for monitor {}: {}x{}", monitor_index, width, height));
             }
 
             let duplication = output1
@@ -130,17 +135,24 @@ impl DxgiCapturer {
                 screen_height: height,
                 width,
                 height,
+                current_monitor_index: monitor_index,
                 device,
                 context,
-                duplication,
+                duplication: Some(duplication),
                 staging_texture,
             })
         }
     }
 
-    /// Reinitialize the DXGI output duplication (e.g. after DXGI_ERROR_ACCESS_LOST)
-    pub fn reinitialize(&mut self) -> Result<(), String> {
+    pub fn switch_monitor(&mut self, monitor_index: u32) -> Result<(u32, u32), String> {
+        if self.current_monitor_index == monitor_index {
+            return Ok((self.width, self.height));
+        }
+
         unsafe {
+            // Drop old duplication first to release DXGI resource
+            self.duplication = None;
+
             let dxgi_device: IDXGIDevice = self
                 .device
                 .cast()
@@ -151,8 +163,85 @@ impl DxgiCapturer {
                 .map_err(|e| format!("GetAdapter failed: {:?}", e))?;
 
             let output = adapter
-                .EnumOutputs(0)
-                .map_err(|e| format!("EnumOutputs(0) failed: {:?}", e))?;
+                .EnumOutputs(monitor_index)
+                .map_err(|e| format!("EnumOutputs({}) failed: {:?}", monitor_index, e))?;
+
+            let output1: IDXGIOutput1 = output
+                .cast()
+                .map_err(|e| format!("Failed to cast IDXGIOutput to IDXGIOutput1: {:?}", e))?;
+
+            let mut output_desc = DXGI_OUTPUT_DESC::default();
+            output
+                .GetDesc(&mut output_desc)
+                .map_err(|e| format!("GetDesc failed: {:?}", e))?;
+
+            let width = (output_desc.DesktopCoordinates.right - output_desc.DesktopCoordinates.left)
+                .abs() as u32;
+            let height = (output_desc.DesktopCoordinates.bottom
+                - output_desc.DesktopCoordinates.top)
+                .abs() as u32;
+
+            if width == 0 || height == 0 {
+                return Err(format!("Invalid desktop dimensions for monitor {}: {}x{}", monitor_index, width, height));
+            }
+
+            let duplication = output1
+                .DuplicateOutput(&self.device)
+                .map_err(|e| format!("DuplicateOutput for monitor {} failed: {:?}", monitor_index, e))?;
+
+            let staging_desc = D3D11_TEXTURE2D_DESC {
+                Width: width,
+                Height: height,
+                MipLevels: 1,
+                ArraySize: 1,
+                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                SampleDesc: DXGI_SAMPLE_DESC {
+                    Count: 1,
+                    Quality: 0,
+                },
+                Usage: D3D11_USAGE_STAGING,
+                BindFlags: 0,
+                CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+                MiscFlags: 0,
+            };
+
+            let mut staging_texture: Option<ID3D11Texture2D> = None;
+            self.device
+                .CreateTexture2D(&staging_desc, None, Some(&mut staging_texture))
+                .map_err(|e| format!("CreateTexture2D for staging texture failed: {:?}", e))?;
+
+            let staging_texture = staging_texture
+                .ok_or_else(|| "Staging texture was None after creation".to_string())?;
+
+            self.screen_width = width;
+            self.screen_height = height;
+            self.width = width;
+            self.height = height;
+            self.current_monitor_index = monitor_index;
+            self.duplication = Some(duplication);
+            self.staging_texture = staging_texture;
+
+            Ok((width, height))
+        }
+    }
+
+    /// Reinitialize the DXGI output duplication (e.g. after DXGI_ERROR_ACCESS_LOST)
+    pub fn reinitialize(&mut self) -> Result<(), String> {
+        unsafe {
+            self.duplication = None;
+
+            let dxgi_device: IDXGIDevice = self
+                .device
+                .cast()
+                .map_err(|e| format!("Failed to cast ID3D11Device to IDXGIDevice: {:?}", e))?;
+
+            let adapter = dxgi_device
+                .GetAdapter()
+                .map_err(|e| format!("GetAdapter failed: {:?}", e))?;
+
+            let output = adapter
+                .EnumOutputs(self.current_monitor_index)
+                .map_err(|e| format!("EnumOutputs({}) failed: {:?}", self.current_monitor_index, e))?;
 
             let output1: IDXGIOutput1 = output
                 .cast()
@@ -162,7 +251,7 @@ impl DxgiCapturer {
                 .DuplicateOutput(&self.device)
                 .map_err(|e| format!("DuplicateOutput re-init failed: {:?}", e))?;
 
-            self.duplication = duplication;
+            self.duplication = Some(duplication);
             Ok(())
         }
     }
@@ -183,10 +272,21 @@ impl DxgiCapturer {
         target_width: u32,
     ) -> Result<Option<Vec<u8>>, String> {
         unsafe {
+            let duplication = match self.duplication.as_ref() {
+                Some(d) => d,
+                None => {
+                    self.reinitialize()?;
+                    match self.duplication.as_ref() {
+                        Some(d) => d,
+                        None => return Err("Duplication unavailable".to_string()),
+                    }
+                }
+            };
+
             let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
             let mut desktop_resource: Option<IDXGIResource> = None;
 
-            let hr = self.duplication.AcquireNextFrame(
+            let hr = duplication.AcquireNextFrame(
                 timeout_ms,
                 &mut frame_info,
                 &mut desktop_resource,
@@ -207,7 +307,7 @@ impl DxgiCapturer {
             let desktop_resource = match desktop_resource {
                 Some(r) => r,
                 None => {
-                    let _ = self.duplication.ReleaseFrame();
+                    let _ = duplication.ReleaseFrame();
                     return Ok(None);
                 }
             };
@@ -215,7 +315,7 @@ impl DxgiCapturer {
             let gpu_texture: ID3D11Texture2D = match desktop_resource.cast() {
                 Ok(t) => t,
                 Err(e) => {
-                    let _ = self.duplication.ReleaseFrame();
+                    let _ = duplication.ReleaseFrame();
                     return Err(format!(
                         "Failed to cast IDXGIResource to ID3D11Texture2D: {:?}",
                         e
@@ -238,7 +338,7 @@ impl DxgiCapturer {
             );
 
             if let Err(e) = map_res {
-                let _ = self.duplication.ReleaseFrame();
+                let _ = duplication.ReleaseFrame();
                 return Err(format!("Map staging texture failed: {:?}", e));
             }
 
@@ -265,7 +365,7 @@ impl DxgiCapturer {
 
             // Unmap staging texture and release frame immediately to unblock GPU
             self.context.Unmap(&self.staging_texture, 0);
-            let _ = self.duplication.ReleaseFrame();
+            let _ = duplication.ReleaseFrame();
 
             // Calculate scaled dimensions if target_width is requested and smaller than source
             let (final_w, final_h) = if width > target_width && target_width > 0 {
@@ -312,10 +412,21 @@ impl DxgiCapturer {
         timeout_ms: u32,
     ) -> Result<Option<(u32, u32, Vec<u8>, DirtyFrameInfo)>, String> {
         unsafe {
+            let duplication = match self.duplication.as_ref() {
+                Some(d) => d,
+                None => {
+                    self.reinitialize()?;
+                    match self.duplication.as_ref() {
+                        Some(d) => d,
+                        None => return Err("Duplication unavailable".to_string()),
+                    }
+                }
+            };
+
             let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
             let mut desktop_resource: Option<IDXGIResource> = None;
 
-            let hr = self.duplication.AcquireNextFrame(
+            let hr = duplication.AcquireNextFrame(
                 timeout_ms,
                 &mut frame_info,
                 &mut desktop_resource,
@@ -340,13 +451,12 @@ impl DxgiCapturer {
             let mut dirty_rects = Vec::new();
             if frame_info.TotalMetadataBufferSize > 0 {
                 let mut buffer_size = 0u32;
-                let _ = self.duplication.GetFrameDirtyRects(0, std::ptr::null_mut(), &mut buffer_size);
+                let _ = duplication.GetFrameDirtyRects(0, std::ptr::null_mut(), &mut buffer_size);
                 if buffer_size > 0 {
                     let count = (buffer_size as usize) / std::mem::size_of::<RECT>();
                     let mut rect_buf = vec![RECT::default(); count];
                     let mut actual_size = 0u32;
-                    if self
-                        .duplication
+                    if duplication
                         .GetFrameDirtyRects(
                             buffer_size,
                             rect_buf.as_mut_ptr(),
@@ -371,14 +481,14 @@ impl DxgiCapturer {
 
             // Zero-overhead check: If no frames accumulated and no dirty rects found, bypass!
             if frame_info.AccumulatedFrames == 0 && dirty_rects.is_empty() {
-                let _ = self.duplication.ReleaseFrame();
+                let _ = duplication.ReleaseFrame();
                 return Ok(None);
             }
 
             let desktop_resource = match desktop_resource {
                 Some(r) => r,
                 None => {
-                    let _ = self.duplication.ReleaseFrame();
+                    let _ = duplication.ReleaseFrame();
                     return Ok(None);
                 }
             };
@@ -386,7 +496,7 @@ impl DxgiCapturer {
             let gpu_texture: ID3D11Texture2D = match desktop_resource.cast() {
                 Ok(t) => t,
                 Err(e) => {
-                    let _ = self.duplication.ReleaseFrame();
+                    let _ = duplication.ReleaseFrame();
                     return Err(format!(
                         "Failed to cast IDXGIResource to ID3D11Texture2D: {:?}",
                         e
@@ -409,7 +519,7 @@ impl DxgiCapturer {
             );
 
             if let Err(e) = map_res {
-                let _ = self.duplication.ReleaseFrame();
+                let _ = duplication.ReleaseFrame();
                 return Err(format!("Map staging texture failed: {:?}", e));
             }
 
@@ -426,7 +536,7 @@ impl DxgiCapturer {
             }
 
             self.context.Unmap(&self.staging_texture, 0);
-            let _ = self.duplication.ReleaseFrame();
+            let _ = duplication.ReleaseFrame();
 
             let dirty_info = DirtyFrameInfo::new(width, height, dirty_rects);
             Ok(Some((width, height, raw_pixels, dirty_info)))
@@ -450,11 +560,20 @@ pub struct DxgiCapturer {
     pub screen_height: u32,
     pub width: u32,
     pub height: u32,
+    pub current_monitor_index: u32,
 }
 
 #[cfg(not(windows))]
 impl DxgiCapturer {
     pub fn new() -> Result<Self, String> {
+        Self::new_for_monitor(0)
+    }
+
+    pub fn new_for_monitor(_monitor_index: u32) -> Result<Self, String> {
+        Err("DXGI is only supported on Windows".to_string())
+    }
+
+    pub fn switch_monitor(&mut self, _monitor_index: u32) -> Result<(u32, u32), String> {
         Err("DXGI is only supported on Windows".to_string())
     }
 
@@ -540,6 +659,17 @@ impl HybridScreenCapturer {
 
     pub fn screen_height(&self) -> u32 {
         self.height
+    }
+
+    pub fn switch_monitor(&mut self, monitor_index: u32) -> Result<(u32, u32), String> {
+        if let Some(ref mut dxgi) = self.dxgi {
+            let (w, h) = dxgi.switch_monitor(monitor_index)?;
+            self.width = w;
+            self.height = h;
+            Ok((w, h))
+        } else {
+            Ok((self.width, self.height))
+        }
     }
 
     pub fn is_dxgi(&self) -> bool {

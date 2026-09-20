@@ -11,12 +11,38 @@ use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::SetCursorPos;
 
 #[cfg(windows)]
+static ACTIVE_MONITOR_BOUNDS: std::sync::RwLock<(i32, i32, u32, u32)> = std::sync::RwLock::new((0, 0, 0, 0));
+
+#[cfg(windows)]
+pub fn set_active_monitor_bounds(left: i32, top: i32, width: u32, height: u32) {
+    if let Ok(mut lock) = ACTIVE_MONITOR_BOUNDS.write() {
+        *lock = (left, top, width, height);
+    }
+}
+
+#[cfg(windows)]
+pub fn get_active_monitor_bounds() -> (i32, i32, u32, u32) {
+    ACTIVE_MONITOR_BOUNDS.read().map(|b| *b).unwrap_or((0, 0, 0, 0))
+}
+
+#[cfg(windows)]
+fn map_coords(x: f32, y: f32, fallback_w: u32, fallback_h: u32) -> (i32, i32) {
+    let (ox, oy, mw, mh) = get_active_monitor_bounds();
+    let (base_w, base_h) = if mw > 0 && mh > 0 { (mw, mh) } else { (fallback_w, fallback_h) };
+    let px = ox + (x * base_w as f32) as i32;
+    let py = oy + (y * base_h as f32) as i32;
+    (px, py)
+}
+
+#[cfg(not(windows))]
+pub fn set_active_monitor_bounds(_left: i32, _top: i32, _width: u32, _height: u32) {}
+
+#[cfg(windows)]
 pub fn inject_input(event: &InputEvent, _screen_w: u32, _screen_h: u32) -> Result<(), String> {
     unsafe {
         match event {
             InputEvent::MouseMove { x, y } => {
-                let px = (x * _screen_w as f32) as i32;
-                let py = (y * _screen_h as f32) as i32;
+                let (px, py) = map_coords(*x, *y, _screen_w, _screen_h);
                 let _ = SetCursorPos(px, py);
             }
 
@@ -110,8 +136,7 @@ pub fn inject_input(event: &InputEvent, _screen_w: u32, _screen_h: u32) -> Resul
                 SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
             }
             InputEvent::TouchTap { x, y } => {
-                let px = (x * _screen_w as f32) as i32;
-                let py = (y * _screen_h as f32) as i32;
+                let (px, py) = map_coords(*x, *y, _screen_w, _screen_h);
                 let _ = SetCursorPos(px, py);
                 let down_input = INPUT {
                     r#type: INPUT_MOUSE,

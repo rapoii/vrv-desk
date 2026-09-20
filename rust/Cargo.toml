@@ -74,4 +74,5 @@ features = [
     "Win32_UI_Shell",
     "Win32_System_Registry",
     "Win32_System_StationsAndDesktops",
+    "Win32_System_Shutdown",
 ]

@@ -64,6 +64,14 @@ enum ClientInput {
     ServiceStatus,
     #[serde(rename = "system_desktop_switch")]
     SystemDesktopSwitch,
+    #[serde(rename = "get_monitors")]
+    GetMonitors,
+    #[serde(rename = "switch_monitor")]
+    SwitchMonitor { index: u32 },
+    #[serde(rename = "set_privacy_mode")]
+    SetPrivacyMode { enabled: bool },
+    #[serde(rename = "system_action")]
+    SystemAction { action: String },
 }
 
 fn parse_cli_args() -> (Option<String>, Option<String>, Option<String>) {
@@ -390,6 +398,8 @@ where
     let ws_sender = std::sync::Arc::new(tokio::sync::Mutex::new(ws_sender));
     let is_running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
 
+    let (monitor_tx, mut monitor_rx) = tokio::sync::mpsc::channel::<(u32, tokio::sync::oneshot::Sender<Result<(u32, u32), String>>)>(4);
+
     let is_running_frame = is_running.clone();
     let ws_sender_frame = ws_sender.clone();
     // 1. Task: Stream H.264 / JPEG frames at target ~60 FPS with smart delta capture
@@ -401,6 +411,19 @@ where
 
         while is_running_frame.load(std::sync::atomic::Ordering::Relaxed) {
             interval.tick().await;
+
+            if let Ok((target_idx, resp_tx)) = monitor_rx.try_recv() {
+                let res = capturer.switch_monitor(target_idx);
+                if let Ok((w, h)) = res {
+                    let monitors = mirror_core::monitor::enumerate_monitors();
+                    if let Some(m) = monitors.iter().find(|m| m.index == target_idx) {
+                        mirror_core::platform::windows_input::set_active_monitor_bounds(m.left, m.top, m.width, m.height);
+                    }
+                    println!("[Host] Switched monitor capture to Display {} ({}x{})", target_idx + 1, w, h);
+                }
+                let _ = resp_tx.send(res);
+            }
+
             let frame_res = if let Some(ref mut enc) = h264_encoder {
                 capturer.capture_h264_with_dirty(10, enc).map(|opt| opt.map(|(bytes, _dirty)| bytes))
             } else {
@@ -526,6 +549,7 @@ where
     let is_running_input = is_running.clone();
     let last_synced_input = last_synced_clipboard.clone();
     let ws_sender_input = ws_sender.clone();
+    let monitor_tx_input = monitor_tx.clone();
     let input_task = tokio::spawn(async move {
         while let Some(msg) = ws_receiver.next().await {
             if !is_running_input.load(std::sync::atomic::Ordering::Relaxed) {
@@ -775,6 +799,71 @@ where
                                     "type": "system_desktop_switch_result",
                                     "success": res.is_ok(),
                                     "error": res.err(),
+                                }).to_string();
+                                let mut sender = ws_sender_input.lock().await;
+                                let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;
+                            }
+                            ClientInput::GetMonitors => {
+                                let monitors = mirror_core::monitor::enumerate_monitors();
+                                let resp = serde_json::json!({
+                                    "type": "monitors_list",
+                                    "monitors": monitors,
+                                }).to_string();
+                                let mut sender = ws_sender_input.lock().await;
+                                let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;
+                            }
+                            ClientInput::SwitchMonitor { index } => {
+                                println!("[Input] Client requested switch to monitor {}", index);
+                                let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
+                                let send_ok = monitor_tx_input.send((index, resp_tx)).await.is_ok();
+                                let res = if send_ok {
+                                    resp_rx.await.unwrap_or(Err("Capture thread closed".to_string()))
+                                } else {
+                                    Err("Failed to queue monitor switch".to_string())
+                                };
+                                let resp = match res {
+                                    Ok((w, h)) => serde_json::json!({
+                                        "type": "switch_monitor_res",
+                                        "success": true,
+                                        "index": index,
+                                        "width": w,
+                                        "height": h,
+                                        "error": null,
+                                    }),
+                                    Err(e) => serde_json::json!({
+                                        "type": "switch_monitor_res",
+                                        "success": false,
+                                        "index": index,
+                                        "error": e,
+                                    }),
+                                }.to_string();
+                                let mut sender = ws_sender_input.lock().await;
+                                let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;
+                            }
+                            ClientInput::SetPrivacyMode { enabled } => {
+                                println!("[Input] Setting privacy mode: {}", enabled);
+                                let res = mirror_core::privacy::set_privacy_mode(enabled);
+                                let resp = serde_json::json!({
+                                    "type": "privacy_mode_res",
+                                    "enabled": enabled,
+                                    "success": res.is_ok(),
+                                    "error": res.err(),
+                                }).to_string();
+                                let mut sender = ws_sender_input.lock().await;
+                                let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;
+                            }
+                            ClientInput::SystemAction { action } => {
+                                println!("[Input] Executing remote system action: {}", action);
+                                let res = mirror_core::system_actions::execute_system_action(&action);
+                                let (success, msg) = match res {
+                                    Ok(m) => (true, m),
+                                    Err(e) => (false, e),
+                                };
+                                let resp = serde_json::json!({
+                                    "type": "system_action_res",
+                                    "action": action,
+                                    "success": success,
+                                    "message": msg,
                                 }).to_string();
                                 let mut sender = ws_sender_input.lock().await;
                                 let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;

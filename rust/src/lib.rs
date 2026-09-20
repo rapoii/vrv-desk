@@ -15,6 +15,9 @@ pub mod host_service;
 pub mod unattended;
 pub mod file_manager;
 pub mod service_manager;
+pub mod monitor;
+pub mod privacy;
+pub mod system_actions;
 
 pub use platform::windows_capture::{DxgiCapturer, HybridScreenCapturer};
 

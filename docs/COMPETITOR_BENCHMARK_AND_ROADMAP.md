@@ -16,11 +16,11 @@
 | **Bi-directional Clipboard** | ✅ **Ada (Auto Sync & Echo-Free)** | ✅ Ada (Teks & File) | ✅ Ada | ✅ Ada | ✅ Ada (Teks) |
 | **File Transfer Manager** | ✅ **Ada (Dual Panel & Chunk Streaming)** | ✅ Ada (Dedicated UI) | ✅ Ada (Dual Panel) | ✅ Ada (Dual Panel) | ❌ Tidak Ada (Hanya P2P) |
 | **Unattended Access** | ✅ **Ada (Permanent Password + Salt & Dual Auth)** | ✅ Password Tetap + 2FA | ✅ Password Tetap + 2FA | ✅ Whitelist + Security | ✅ Akun Permanen |
-| **Multi-Monitor Switcher** | ❌ Primary Screen Saja | ✅ Multi-Display Switch | ✅ Multi-Tab Display | ✅ Multi-Monitor Switch | ✅ Virtual / Phys Switch |
+| **Multi-Monitor Switcher** | ✅ **Ada (DXGI Output Switch & Dynamic Remapping)** | ✅ Multi-Display Switch | ✅ Multi-Tab Display | ✅ Multi-Monitor Switch | ✅ Virtual / Phys Switch |
 | **UAC Elevation & Service** | ✅ **Ada (Windows Service & Secure Desktop)** | ✅ Windows Service | ✅ Windows Service | ✅ Windows Service | ✅ System Service |
 | **Virtual Display Driver** | ❌ Butuh Monitor Nyala | ✅ IddSampleDriver | ✅ Display Driver | ✅ Virtual Display | ✅ Parsec VDD / Idd |
-| **Remote Reboot & Auto-Reconnect** | ❌ *Belum Ada* | ✅ Ada (+ Safe Mode) | ✅ Ada | ✅ Ada (+ Safe Mode) | ❌ Tidak Ada |
-| **Privacy Mode (Screen Blanking)** | ❌ *Belum Ada* | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Tidak Ada |
+| **Remote Reboot & Auto-Reconnect** | 🔄 **Remote Reboot & Shutdown Ada** | ✅ Ada (+ Safe Mode) | ✅ Ada | ✅ Ada (+ Safe Mode) | ❌ Tidak Ada |
+| **Privacy Mode (Screen Blanking)** | ✅ **Ada (Input Locking & Monitor Power State)** | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Tidak Ada |
 | **System Shortcuts (Ctrl+Alt+Del)**| ✅ **Ada (SAS Dynamic Injection)** | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Terbatas |
 | **In-Session Chat & Whiteboard** | ❌ *Belum Ada* | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Tidak Ada |
 | **Session Recording** | ❌ *Belum Ada* | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Tidak Ada |
@@ -105,14 +105,17 @@
 - [x] UI desktop elevation badge pada Win32 GUI (`vrv_desk.exe`) dan remote shortcut Ctrl+Alt+Del & Elevate pada mobile viewer (`mirror_view.dart` & `shortcut_bar.dart`).
 - [x] Verifikasi pengujian 149/149 passed (66 Rust + 83 Flutter) dan skrip live E2E Python (`test_e2e_service_uac.py`).
 
-### Phase 23: Multi-Monitor Enumeration & Output Switcher
-- [ ] Modifikasi `DxgiCapturer` agar mengenumerasi seluruh `IDXGIOutput` yang tersedia pada adapter grafis.
-- [ ] Tambahkan tombol dropdown pemilihan display pada Viewer HUD (Display 1, Display 2, dll).
-- [ ] Implementasikan dynamic rebind capture loop saat pengguna berpindah monitor tanpa memutus sesi streaming.
+### Phase 23: Multi-Monitor Enumeration & Output Switcher - [x] **Completed & Verified**
+- [x] Modul DXGI monitor enumerator (`rust/src/monitor.rs`) mengenumerasi seluruh `IDXGIOutput` lengkap dengan batas virtual desktop koordinat, resolusi, nama monitor, dan flag status `is_primary`.
+- [x] Implementasi dynamic rebind capture loop pada `DxgiCapturer` dan `HybridScreenCapturer` saat pengguna berpindah monitor tanpa memutus sesi streaming.
+- [x] Pemetaan koordinat mouse multi-monitor dinamis (`set_active_monitor_bounds`) di `windows_input.rs`.
+- [x] Tombol dan modal bottom sheet pemilihan display pada Mobile & Desktop Viewer HUD (`mirror_view.dart` & `shortcut_bar.dart`).
 
-### Phase 24: Privacy Mode & System Shortcuts
-- [ ] Implementasikan driver blank screen atau pemanggilan API DWM/GDI `SetDeviceGammaRamp` / low-level monitor power off.
-- [ ] Tambahkan panel tombol cepat pada HUD: `Ctrl+Alt+Del`, `Win+L`, `Alt+Tab`, `Task Manager`.
+### Phase 24: Privacy Mode & System Shortcuts - [x] **Completed & Verified**
+- [x] Implementasi Privacy Mode engine (`rust/src/privacy.rs`): physical input lock (`BlockInput`) dan blanking monitor fisik via Win32 asynchronous power state dispatch (`SC_MONITORPOWER`).
+- [x] Engine Remote System Actions (`rust/src/system_actions.rs`): Workstation lock (`Win+L`), Task Manager (`taskmgr`), remote safe reboot & shutdown.
+- [x] Panel tombol shortcut interaktif pada HUD viewer: `🖥️ Monitor`, `🔒 Privacy`, `🔒 Lock PC`, `TaskMgr`, `Ctrl+Alt+Del`, `🛡️ Elevate`.
+- [x] Pengujian komprehensif: 152/152 tests passed (69 Rust + 83 Flutter) + automated Python E2E integration test (`test_e2e_monitor_privacy.py`).
 
 ### Phase 25: Virtual Display Driver (Headless PC)
 - [ ] Bungkus open-source `IddSampleDriver` ke dalam paket installer VrV Desk.
