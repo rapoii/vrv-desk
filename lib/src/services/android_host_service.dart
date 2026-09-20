@@ -345,6 +345,27 @@ class AndroidHostService {
         }));
         return;
       }
+      if (type == 'get_virtual_display_status') {
+        client.socket.add(jsonEncode({
+          'type': 'virtual_display_status_res',
+          'driver_installed': false,
+          'driver_name': 'Android Virtual Display (Built-in)',
+          'active': false,
+          'active_count': 0,
+          'modes': [],
+          'is_headless': false,
+          'physical_monitor_count': 1,
+        }));
+        return;
+      }
+      if (type == 'install_virtual_display' || type == 'uninstall_virtual_display') {
+        client.socket.add(jsonEncode({
+          'type': '${type}_res',
+          'success': false,
+          'message': 'Virtual display driver installation only supported on Windows host',
+        }));
+        return;
+      }
 
       _dispatchRemoteInput(json);
     } catch (e) {

@@ -1,0 +1,61 @@
+;
+; IddSampleDriver.inf - VrV Desk Virtual Indirect Display Driver
+; Microsoft Windows 10/11 WDDM 2.5+ Indirect Display Driver (IDD)
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=Display
+ClassGuid={4d36e968-e325-11ce-bfc1-08002be10318}
+Provider=%ManufacturerName%
+CatalogFile=IddSampleDriver.cat
+DriverVer=09/20/2026,1.0.0.1
+PnpLockdown=1
+
+[DestinationDirs]
+DefaultDestDir = 12
+IddSampleDriver_Device_CoInstaller_CopyFiles = 11
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+IddSampleDriver.dll = 1,,
+
+[Manufacturer]
+%ManufacturerName%=Standard,NTamd64
+
+[Standard.NTamd64]
+%IddSampleDriver.DeviceDesc%=IddSampleDriver_Device, Root\VrVDeskIdd
+%IddSampleDriver.DeviceDesc%=IddSampleDriver_Device, SWD\VrVDeskIdd
+
+[IddSampleDriver_Device.NT]
+CopyFiles=Drivers_Dir
+
+[Drivers_Dir]
+IddSampleDriver.dll
+
+[IddSampleDriver_Device.NT.Services]
+AddService=WUDFRd,0x000001fa,WUDFRD_ServiceInstall
+
+[WUDFRD_ServiceInstall]
+DisplayName=%WudfRdDisplayName%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\WUDFRd.sys
+
+[IddSampleDriver_Device.NT.Wdf]
+KmdfService=WUDFRd, WUDFRd_wdfsect
+UmdfService=IddSampleDriver, IddSampleDriver_wdfsect
+UmdfServiceOrder=IddSampleDriver
+
+[IddSampleDriver_wdfsect]
+UmdfLibraryVersion=2.25.0
+ServiceBinary=%12%\UMDF\IddSampleDriver.dll
+
+[Strings]
+ManufacturerName="VrV Desk Project"
+DiskName="VrV Desk Virtual Display Driver Installation Media"
+IddSampleDriver.DeviceDesc="VrV Desk Virtual Display (WDDM IDD)"
+WudfRdDisplayName="Windows Driver Foundation - User-mode Driver Framework Reflector"

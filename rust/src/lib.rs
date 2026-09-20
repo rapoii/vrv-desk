@@ -18,6 +18,7 @@ pub mod service_manager;
 pub mod monitor;
 pub mod privacy;
 pub mod system_actions;
+pub mod virtual_display;
 
 pub use platform::windows_capture::{DxgiCapturer, HybridScreenCapturer};
 

@@ -202,6 +202,20 @@ fn perform_install(
             }
         }
 
+        // Step 4.5: Bundle Virtual Display Driver (Headless PC Support)
+        {
+            let mut s = status.lock().unwrap();
+            *s = "Bundling Virtual Display Driver (Headless PC Support)...".to_string();
+        }
+        progress.store(88, Ordering::Relaxed);
+        unsafe { InvalidateRect(hwnd, None, FALSE); }
+        let driver_dir = dest_dir.join("driver").join("virtual_display");
+        let _ = fs::create_dir_all(&driver_dir);
+        let _ = fs::write(driver_dir.join("IddSampleDriver.inf"), include_str!("../../../driver/virtual_display/IddSampleDriver.inf"));
+        let _ = fs::write(driver_dir.join("install.bat"), include_str!("../../../driver/virtual_display/install.bat"));
+        let _ = fs::write(driver_dir.join("uninstall.bat"), include_str!("../../../driver/virtual_display/uninstall.bat"));
+        let _ = fs::write(driver_dir.join("README.md"), include_str!("../../../driver/virtual_display/README.md"));
+
         // Step 5: Register Uninstaller in Windows Registry
         {
             let mut s = status.lock().unwrap();

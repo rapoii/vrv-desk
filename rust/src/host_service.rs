@@ -70,6 +70,12 @@ enum ClientInput {
     SetPrivacyMode { enabled: bool },
     #[serde(rename = "system_action")]
     SystemAction { action: String },
+    #[serde(rename = "get_virtual_display_status")]
+    GetVirtualDisplayStatus,
+    #[serde(rename = "install_virtual_display")]
+    InstallVirtualDisplay,
+    #[serde(rename = "uninstall_virtual_display")]
+    UninstallVirtualDisplay,
 }
 
 #[derive(Clone)]
@@ -820,6 +826,77 @@ where
                             let resp = serde_json::json!({
                                 "type": "system_action_res",
                                 "action": action,
+                                "success": success,
+                                "message": msg,
+                            }).to_string();
+                            let mut sender = ws_sender_input.lock().await;
+                            let _ = sender.send(Message::Text(resp.into())).await;
+                        }
+                        ClientInput::GetVirtualDisplayStatus => {
+                            let status = crate::virtual_display::get_status();
+                            let resp = serde_json::json!({
+                                "type": "virtual_display_status_res",
+                                "driver_installed": status.driver_installed,
+                                "driver_name": status.driver_name,
+                                "active": status.active,
+                                "active_count": status.active_count,
+                                "modes": status.modes,
+                                "is_headless": status.is_headless,
+                                "physical_monitor_count": status.physical_monitor_count,
+                            }).to_string();
+                            let mut sender = ws_sender_input.lock().await;
+                            let _ = sender.send(Message::Text(resp.into())).await;
+                        }
+                        ClientInput::InstallVirtualDisplay => {
+                            telemetry_input.add_log("Client requested virtual display driver installation".to_string());
+                            let result = match crate::service_manager::send_pipe_command(r#"{"cmd":"install_virtual_display"}"#).await {
+                                Ok(pipe_str) => {
+                                    if let Ok(pipe_resp) = serde_json::from_str::<crate::service_manager::PipeResponse>(&pipe_str) {
+                                        if pipe_resp.status == "ok" {
+                                            Ok(pipe_resp.message.unwrap_or_else(|| "Driver installed via service".to_string()))
+                                        } else {
+                                            crate::virtual_display::install_driver(None)
+                                        }
+                                    } else {
+                                        crate::virtual_display::install_driver(None)
+                                    }
+                                }
+                                Err(_) => crate::virtual_display::install_driver(None),
+                            };
+                            let (success, msg) = match result {
+                                Ok(m) => (true, m),
+                                Err(e) => (false, e),
+                            };
+                            let resp = serde_json::json!({
+                                "type": "install_virtual_display_res",
+                                "success": success,
+                                "message": msg,
+                            }).to_string();
+                            let mut sender = ws_sender_input.lock().await;
+                            let _ = sender.send(Message::Text(resp.into())).await;
+                        }
+                        ClientInput::UninstallVirtualDisplay => {
+                            telemetry_input.add_log("Client requested virtual display driver uninstallation".to_string());
+                            let result = match crate::service_manager::send_pipe_command(r#"{"cmd":"uninstall_virtual_display"}"#).await {
+                                Ok(pipe_str) => {
+                                    if let Ok(pipe_resp) = serde_json::from_str::<crate::service_manager::PipeResponse>(&pipe_str) {
+                                        if pipe_resp.status == "ok" {
+                                            Ok(pipe_resp.message.unwrap_or_else(|| "Driver uninstalled via service".to_string()))
+                                        } else {
+                                            crate::virtual_display::uninstall_driver()
+                                        }
+                                    } else {
+                                        crate::virtual_display::uninstall_driver()
+                                    }
+                                }
+                                Err(_) => crate::virtual_display::uninstall_driver(),
+                            };
+                            let (success, msg) = match result {
+                                Ok(m) => (true, m),
+                                Err(e) => (false, e),
+                            };
+                            let resp = serde_json::json!({
+                                "type": "uninstall_virtual_display_res",
                                 "success": success,
                                 "message": msg,
                             }).to_string();

@@ -490,6 +490,30 @@ pub mod pipe_ipc {
                                         message: res.err(),
                                     }
                                 }
+                                "install_virtual_display" => {
+                                    let res = crate::virtual_display::install_driver(req.args.as_deref());
+                                    PipeResponse {
+                                        status: if res.is_ok() { "ok".to_string() } else { "error".to_string() },
+                                        elevated: is_elevated_now,
+                                        is_service,
+                                        message: match res {
+                                            Ok(m) => Some(m),
+                                            Err(e) => Some(e),
+                                        },
+                                    }
+                                }
+                                "uninstall_virtual_display" => {
+                                    let res = crate::virtual_display::uninstall_driver();
+                                    PipeResponse {
+                                        status: if res.is_ok() { "ok".to_string() } else { "error".to_string() },
+                                        elevated: is_elevated_now,
+                                        is_service,
+                                        message: match res {
+                                            Ok(m) => Some(m),
+                                            Err(e) => Some(e),
+                                        },
+                                    }
+                                }
                                 other => PipeResponse {
                                     status: "error".to_string(),
                                     elevated: is_elevated_now,

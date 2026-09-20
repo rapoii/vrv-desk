@@ -601,11 +601,13 @@ impl DxgiCapturer {
     }
 }
 
-/// Resilient screen capturer combining hardware DXGI Desktop Duplication with automatic GDI fallback
+/// Resilient screen capturer combining hardware DXGI Desktop Duplication with automatic GDI fallback and Headless Virtual Canvas
 pub struct HybridScreenCapturer {
     dxgi: Option<DxgiCapturer>,
     gdi: Option<crate::gdi_capture::ScreenCapturer>,
     is_dxgi: bool,
+    pub is_headless: bool,
+    headless_frame_count: u64,
     width: u32,
     height: u32,
 }
@@ -626,23 +628,42 @@ impl HybridScreenCapturer {
                         dxgi: Some(dxgi),
                         gdi: None,
                         is_dxgi: true,
+                        is_headless: false,
+                        headless_frame_count: 0,
                         width: w,
                         height: h,
                     })
                 }
                 Err(e) => {
                     println!("⚠️ DXGI unavailable ({}), falling back to GDI BitBlt", e);
-                    let gdi = crate::gdi_capture::ScreenCapturer::new()?;
-                    let w = gdi.screen_width as u32;
-                    let h = gdi.screen_height as u32;
-                    println!("🖥️ Initialized GDI BitBlt capture engine ({}x{})", w, h);
-                    Ok(Self {
-                        dxgi: None,
-                        gdi: Some(gdi),
-                        is_dxgi: false,
-                        width: w,
-                        height: h,
-                    })
+                    match crate::gdi_capture::ScreenCapturer::new() {
+                        Ok(gdi) => {
+                            let w = gdi.screen_width as u32;
+                            let h = gdi.screen_height as u32;
+                            println!("🖥️ Initialized GDI BitBlt capture engine ({}x{})", w, h);
+                            Ok(Self {
+                                dxgi: None,
+                                gdi: Some(gdi),
+                                is_dxgi: false,
+                                is_headless: false,
+                                headless_frame_count: 0,
+                                width: w,
+                                height: h,
+                            })
+                        }
+                        Err(ge) => {
+                            println!("⚠️ GDI unavailable ({}) - initializing Headless Virtual Canvas (1920x1080)", ge);
+                            Ok(Self {
+                                dxgi: None,
+                                gdi: None,
+                                is_dxgi: false,
+                                is_headless: true,
+                                headless_frame_count: 0,
+                                width: 1920,
+                                height: 1080,
+                            })
+                        }
+                    }
                 }
             }
         }
@@ -682,6 +703,25 @@ impl HybridScreenCapturer {
         quality: u8,
         target_width: u32,
     ) -> Result<Option<Vec<u8>>, String> {
+        if self.is_headless {
+            let bgra = crate::virtual_display::generate_headless_frame(self.width, self.height, self.headless_frame_count, "Headless Canvas");
+            self.headless_frame_count += 1;
+            let mut raw_pixels = vec![0u8; (self.width * self.height * 4) as usize];
+            for (src_px, dst_px) in bgra.chunks_exact(4).zip(raw_pixels.chunks_exact_mut(4)) {
+                dst_px[0] = src_px[2]; // R
+                dst_px[1] = src_px[1]; // G
+                dst_px[2] = src_px[0]; // B
+                dst_px[3] = src_px[3]; // A
+            }
+            let img = image::RgbaImage::from_raw(self.width, self.height, raw_pixels)
+                .ok_or_else(|| "Failed to construct RgbaImage from headless buffer".to_string())?;
+            let rgb_img = image::DynamicImage::ImageRgba8(img).to_rgb8();
+            let mut buffer = std::io::Cursor::new(Vec::with_capacity((self.width * self.height) as usize / 4));
+            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buffer, quality);
+            encoder.encode_image(&rgb_img).map_err(|e| format!("Headless JPEG encode failed: {:?}", e))?;
+            return Ok(Some(buffer.into_inner()));
+        }
+
         if self.is_dxgi {
             if let Some(ref mut dxgi) = self.dxgi {
                 match dxgi.capture_jpeg(timeout_ms, quality, target_width) {
@@ -690,8 +730,11 @@ impl HybridScreenCapturer {
                         eprintln!("⚠️ DXGI capture error: {}, falling back to GDI engine", e);
                         self.is_dxgi = false;
                         self.dxgi = None;
-                        let gdi = crate::gdi_capture::ScreenCapturer::new()?;
-                        self.gdi = Some(gdi);
+                        if let Ok(gdi) = crate::gdi_capture::ScreenCapturer::new() {
+                            self.gdi = Some(gdi);
+                        } else {
+                            self.is_headless = true;
+                        }
                     }
                 }
             }
@@ -699,11 +742,35 @@ impl HybridScreenCapturer {
 
         // Fallback or primary GDI execution
         if let Some(ref gdi) = self.gdi {
-            let jpeg = gdi.capture_jpeg(quality, target_width)?;
-            return Ok(Some(jpeg));
+            match gdi.capture_jpeg(quality, target_width) {
+                Ok(jpeg) => return Ok(Some(jpeg)),
+                Err(e) => {
+                    eprintln!("⚠️ GDI capture error: {}, switching to headless mode", e);
+                    self.is_headless = true;
+                    self.gdi = None;
+                }
+            }
         }
 
-        // Try initializing GDI if neither was present
+        if self.is_headless {
+            let bgra = crate::virtual_display::generate_headless_frame(self.width, self.height, self.headless_frame_count, "Headless Canvas");
+            self.headless_frame_count += 1;
+            let mut raw_pixels = vec![0u8; (self.width * self.height * 4) as usize];
+            for (src_px, dst_px) in bgra.chunks_exact(4).zip(raw_pixels.chunks_exact_mut(4)) {
+                dst_px[0] = src_px[2];
+                dst_px[1] = src_px[1];
+                dst_px[2] = src_px[0];
+                dst_px[3] = src_px[3];
+            }
+            let img = image::RgbaImage::from_raw(self.width, self.height, raw_pixels)
+                .ok_or_else(|| "Failed to construct RgbaImage from headless buffer".to_string())?;
+            let rgb_img = image::DynamicImage::ImageRgba8(img).to_rgb8();
+            let mut buffer = std::io::Cursor::new(Vec::with_capacity((self.width * self.height) as usize / 4));
+            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buffer, quality);
+            encoder.encode_image(&rgb_img).map_err(|e| format!("Headless JPEG encode failed: {:?}", e))?;
+            return Ok(Some(buffer.into_inner()));
+        }
+
         let gdi = crate::gdi_capture::ScreenCapturer::new()?;
         let jpeg = gdi.capture_jpeg(quality, target_width)?;
         self.gdi = Some(gdi);
@@ -717,6 +784,13 @@ impl HybridScreenCapturer {
     ) -> Result<Option<(u32, u32, Vec<u8>, DirtyFrameInfo)>, String> {
         #[cfg(windows)]
         {
+            if self.is_headless {
+                let bgra = crate::virtual_display::generate_headless_frame(self.width, self.height, self.headless_frame_count, "Headless Canvas");
+                self.headless_frame_count += 1;
+                let dirty = DirtyFrameInfo::new(self.width, self.height, vec![DirtyRect::new(0, 0, self.width as i32, self.height as i32)]);
+                return Ok(Some((self.width, self.height, bgra, dirty)));
+            }
+
             if self.is_dxgi {
                 if let Some(ref mut dxgi) = self.dxgi {
                     match dxgi.capture_raw_bgra_with_dirty(timeout_ms) {
@@ -725,17 +799,35 @@ impl HybridScreenCapturer {
                             eprintln!("⚠️ DXGI capture error: {}, falling back to GDI engine", e);
                             self.is_dxgi = false;
                             self.dxgi = None;
-                            let gdi = crate::gdi_capture::ScreenCapturer::new()?;
-                            self.gdi = Some(gdi);
+                            if let Ok(gdi) = crate::gdi_capture::ScreenCapturer::new() {
+                                self.gdi = Some(gdi);
+                            } else {
+                                self.is_headless = true;
+                            }
                         }
                     }
                 }
             }
 
             if let Some(ref gdi) = self.gdi {
-                let (w, h, bgra) = gdi.capture_raw_bgra()?;
-                let dirty = DirtyFrameInfo::new(w, h, vec![DirtyRect::new(0, 0, w as i32, h as i32)]);
-                return Ok(Some((w, h, bgra, dirty)));
+                match gdi.capture_raw_bgra() {
+                    Ok((w, h, bgra)) => {
+                        let dirty = DirtyFrameInfo::new(w, h, vec![DirtyRect::new(0, 0, w as i32, h as i32)]);
+                        return Ok(Some((w, h, bgra, dirty)));
+                    }
+                    Err(e) => {
+                        eprintln!("⚠️ GDI capture error: {}, switching to headless mode", e);
+                        self.is_headless = true;
+                        self.gdi = None;
+                    }
+                }
+            }
+
+            if self.is_headless {
+                let bgra = crate::virtual_display::generate_headless_frame(self.width, self.height, self.headless_frame_count, "Headless Canvas");
+                self.headless_frame_count += 1;
+                let dirty = DirtyFrameInfo::new(self.width, self.height, vec![DirtyRect::new(0, 0, self.width as i32, self.height as i32)]);
+                return Ok(Some((self.width, self.height, bgra, dirty)));
             }
 
             let gdi = crate::gdi_capture::ScreenCapturer::new()?;

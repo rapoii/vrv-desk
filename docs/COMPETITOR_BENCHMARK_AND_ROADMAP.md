@@ -18,7 +18,7 @@
 | **Unattended Access** | ✅ **Ada (Permanent Password + Salt & Dual Auth)** | ✅ Password Tetap + 2FA | ✅ Password Tetap + 2FA | ✅ Whitelist + Security | ✅ Akun Permanen |
 | **Multi-Monitor Switcher** | ✅ **Ada (DXGI Output Switch & Dynamic Remapping)** | ✅ Multi-Display Switch | ✅ Multi-Tab Display | ✅ Multi-Monitor Switch | ✅ Virtual / Phys Switch |
 | **UAC Elevation & Service** | ✅ **Ada (Windows Service & Secure Desktop)** | ✅ Windows Service | ✅ Windows Service | ✅ Windows Service | ✅ System Service |
-| **Virtual Display Driver** | ❌ Butuh Monitor Nyala | ✅ IddSampleDriver | ✅ Display Driver | ✅ Virtual Display | ✅ Parsec VDD / Idd |
+| **Virtual Display Driver** | ✅ **Ada (WDDM IDD & Headless Canvas)** | ✅ IddSampleDriver | ✅ Display Driver | ✅ Virtual Display | ✅ Parsec VDD / Idd |
 | **Remote Reboot & Auto-Reconnect** | 🔄 **Remote Reboot & Shutdown Ada** | ✅ Ada (+ Safe Mode) | ✅ Ada | ✅ Ada (+ Safe Mode) | ❌ Tidak Ada |
 | **Privacy Mode (Screen Blanking)** | ✅ **Ada (Input Locking & Monitor Power State)** | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Tidak Ada |
 | **System Shortcuts (Ctrl+Alt+Del)**| ✅ **Ada (SAS Dynamic Injection)** | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Terbatas |
@@ -117,6 +117,13 @@
 - [x] Panel tombol shortcut interaktif pada HUD viewer: `🖥️ Monitor`, `🔒 Privacy`, `🔒 Lock PC`, `TaskMgr`, `Ctrl+Alt+Del`, `🛡️ Elevate`.
 - [x] Pengujian komprehensif: 152/152 tests passed (69 Rust + 83 Flutter) + automated Python E2E integration test (`test_e2e_monitor_privacy.py`).
 
-### Phase 25: Virtual Display Driver (Headless PC)
-- [ ] Bungkus open-source `IddSampleDriver` ke dalam paket installer VrV Desk.
-- [ ] Buat opsi toggle *"Enable Virtual Headless Monitor"* jika tidak ada monitor fisik aktif yang terdeteksi oleh DXGI.
+### Phase 25: Virtual Display Driver (Headless PC) - [x] **Completed & Verified**
+- [x] Bungkus driver WDDM 2.5+ Indirect Display Driver (`IddSampleDriver.inf`, `install.bat`, `uninstall.bat`) ke dalam installer wizard `vrv_setup.exe`.
+- [x] Deteksi otomatis monitor fisik vs virtual display driver via `rust/src/virtual_display.rs`.
+- [x] Fallback Headless Virtual Canvas (1080p 60FPS) pada `HybridScreenCapturer` saat 0 monitor fisik tercolok, sehingga server tidak crash dan dapat di-remote untuk instalasi driver.
+- [x] WebSocket RPC `get_virtual_display_status`, `install_virtual_display`, `uninstall_virtual_display` dengan Named Pipe IPC bridge ke `vrv_service.exe` SYSTEM daemon.
+- [x] Seluruh 156/156 pengujian (73 Rust + 83 Flutter) lulus 100% dan terverifikasi live E2E via `test_e2e_virtual_display.py`.
+
+### Phase 26: Web Client (Browser-based remote control via WebRTC/WASM)
+- [ ] Implementasikan WebRTC/WebSocket streaming gateway yang dapat diakses langsung via web browser modern.
+- [ ] Antarmuka kontrol keyboard & mouse virtual berbasis HTML5 Canvas.

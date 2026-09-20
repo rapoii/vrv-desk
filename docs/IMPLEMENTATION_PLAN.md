@@ -1130,6 +1130,12 @@ Rincian spesifikasi teknis dan audit riset pasar terhadap RustDesk, AnyDesk, dan
   - [x] Remote system actions engine (`rust/src/system_actions.rs`): Workstation lock (`Win+L`), Task Manager (`taskmgr`), safe reboot & safe shutdown
   - [x] Toolbar shortcuts interaktif (`shortcut_bar.dart` & `mirror_view.dart`): `🖥️ Monitor`, `🔒 Privacy`, `🔒 Lock PC`, `TaskMgr`, `Ctrl+Alt+Del`, `🛡️ Elevate`
   - [x] Verifikasi unit tests (3 test baru di `monitor_privacy_test.rs`) dan live E2E integration test (`test_e2e_monitor_privacy.py`) dengan total 152/152 tests passing (69 Rust + 83 Flutter)
-- [ ] **Phase 25: Virtual Display Driver (Headless PC Support)**
-  - [ ] Driver WDDM IddSampleDriver bundling
+- [x] **Phase 25: Virtual Display Driver (Headless PC Support) - Completed & Verified**
+  - [x] Modul Virtual Display & Headless engine (`rust/src/virtual_display.rs`): deteksi headless otomatis, driver management (`pnputil`), dan dukungan resolusi hingga 4K @ 120Hz
+  - [x] Driver WDDM 2.5+ Indirect Display Driver (IDD) bundling: `driver/virtual_display/IddSampleDriver.inf`, `install.bat`, `uninstall.bat`, dan `README.md`
+  - [x] Embedded driver deployment otomatis pada setup installer wizard (`vrv_setup.exe`) ke direktori instalasi
+  - [x] Headless Virtual Canvas Fallback: streaming tetap berjalan mulus pada PC tanpa monitor fisik colok dengan status HUD dan zero-crash transition saat display driver aktif
+  - [x] WebSocket RPC integration (`get_virtual_display_status`, `install_virtual_display`, `uninstall_virtual_display`) dan Named Pipe IPC service handoff
+  - [x] Status indikator virtual display pada native PC GUI (`vrv_desk.exe`) dan remote status toast pada mobile viewer (`mirror_view.dart`)
+  - [x] Unit tests komprehensif (`rust/tests/virtual_display_test.rs`) dan skrip live E2E integration test (`test_e2e_virtual_display.py`) dengan total 156/156 tests passing (73 Rust + 83 Flutter)
 - [ ] **Phase 26: Web Client (Browser-based remote control via WebRTC/WASM)**

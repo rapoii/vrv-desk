@@ -543,6 +543,33 @@ class _MirrorViewState extends State<MirrorView> {
               ),
             );
           }
+        } else if (type == 'virtual_display_status_res') {
+          final installed = json['driver_installed'] == true;
+          final isHeadless = json['is_headless'] == true;
+          final activeCount = json['active_count'] ?? 0;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('🖥️ Virtual Display: ${installed ? "Driver Installed" : "Driver Not Installed"} • ${isHeadless ? "Headless Mode" : "$activeCount Active"}'),
+                backgroundColor: installed ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                duration: const Duration(seconds: 3),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } else if (type == 'install_virtual_display_res') {
+          final success = json['success'] == true;
+          final message = json['message'] ?? '';
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(success ? '✅ Driver Installed: $message' : '⚠️ Install Failed: $message'),
+                backgroundColor: success ? const Color(0xFF10B981) : Colors.red,
+                duration: const Duration(seconds: 3),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
         } else if (type == 'clipboard_sync' && json['text'] is String) {
           final text = json['text'] as String;
           _lastRemoteClipboard = text;

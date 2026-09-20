@@ -444,8 +444,17 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
 
     SelectObject(hdc, font_subtitle);
     SetTextColor(hdc, COLORREF(COLOR_TEXT_MUTED));
+    let vdd_status = mirror_core::virtual_display::get_status();
+    let vdd_str = if vdd_status.driver_installed {
+        "WDDM IDD (Ready)"
+    } else if vdd_status.is_headless {
+        "Headless Mode (Canvas Active)"
+    } else {
+        "Headless Canvas (Fallback Ready)"
+    };
     let mut stats: Vec<u16> = format!(
-        "Capture: DXGI Desktop Duplication (GPU)   •   Video: MFT Hardware H.264 (NVENC/QSV/AMF)\nAudio: WASAPI Loopback 48kHz Stereo Opus   •   Network: LAN UDP :53210 & WebSocket :53211"
+        "Capture: DXGI Desktop Duplication (GPU)   •   Video: MFT Hardware H.264\nDisplay Driver: {}   •   Audio: WASAPI 48kHz Stereo Opus",
+        vdd_str
     ).encode_utf16().collect();
     let mut stats_rect = RECT { left: 45, top: 332, right: 835, bottom: 375 };
     DrawTextW(hdc, &mut stats, &mut stats_rect, DT_LEFT | DT_WORDBREAK);
