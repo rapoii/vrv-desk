@@ -149,5 +149,11 @@ flutter test
 
 ---
 
+## 📊 Benchmark & Future Roadmap
+Audit perbandingan fitur lengkap dengan **RustDesk, AnyDesk, dan TeamViewer** beserta rencana tahapan implementasi fitur berikutnya (Clipboard Sync, File Transfer, Unattended Access, Multi-Monitor, dll) dapat dibaca di:
+👉 **[Competitor Benchmark & Feature Gap Roadmap](docs/COMPETITOR_BENCHMARK_AND_ROADMAP.md)**
+
+---
+
 ## 📄 License
 MIT License. Created by Rafi Permana.

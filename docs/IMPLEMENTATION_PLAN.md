@@ -1086,3 +1086,34 @@ Verify against performance criteria:
 git add .
 git commit -m "chore: complete test verification and performance benchmarks"
 ```
+
+---
+
+## Future Roadmap (Competitor Gap Analysis & Next Phases)
+
+Rincian spesifikasi teknis dan audit riset pasar terhadap RustDesk, AnyDesk, dan TeamViewer terdokumentasi di [docs/COMPETITOR_BENCHMARK_AND_ROADMAP.md](COMPETITOR_BENCHMARK_AND_ROADMAP.md).
+
+### Upcoming Backlog Checklists:
+- [ ] **Phase 19: Bi-directional Clipboard Sync (`VCLP`)**
+  - [ ] Implementasi `FrameType::Clipboard` di `rust/src/protocol.rs`
+  - [ ] Win32 `AddClipboardFormatListener` di Windows Host
+  - [ ] Android `ClipboardManager` bridge di Flutter Client
+- [ ] **Phase 20: Unattended Access (Static Password / Hash Auth)**
+  - [ ] Simpan argon2id hash password di `%APPDATA%\VrVDesk\config.toml`
+  - [ ] Dukungan auth PIN dinamis ATAU password tetap di `rust/src/pairing.rs`
+  - [ ] Opsi toggle di GUI `vrv_desk.rs`
+- [ ] **Phase 21: Dedicated Dual-Pane File Transfer (`VFIL`)**
+  - [ ] Protokol chunking file biner aman
+  - [ ] UI explorer file manager di Flutter & Win32
+- [ ] **Phase 22: Windows Service Daemon & UAC Elevation Bypass**
+  - [ ] Binary `vrv_service.exe` berlisensi `SYSTEM`
+  - [ ] Handoff token ke secure desktop untuk interaksi dialog administrator UAC
+- [ ] **Phase 23: Multi-Monitor Enumeration & Output Switcher**
+  - [ ] Loop `EnumOutputs` DXGI untuk tangkap display non-primary
+  - [ ] HUD switcher dropdown (Display 1, Display 2)
+- [ ] **Phase 24: Privacy Mode & In-Session System Shortcuts**
+  - [ ] Black screen / screen blanking host
+  - [ ] Toolbar shortcut tombol `Ctrl+Alt+Del`, `Win+L`, `Task Manager`
+- [ ] **Phase 25: Virtual Display Driver (Headless PC Support)**
+  - [ ] Driver WDDM IddSampleDriver bundling
+- [ ] **Phase 26: Web Client (Browser-based remote control via WebRTC/WASM)**
