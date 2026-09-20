@@ -37,6 +37,7 @@ struct SetupState {
     install_progress: Arc<AtomicU32>, // 0 to 100
     install_status: Arc<std::sync::Mutex<String>>,
     hwnd_dest_edit: HWND,
+    hwnd_btn_browse: HWND,
     hwnd_chk_desktop: HWND,
     hwnd_chk_startmenu: HWND,
     hwnd_chk_launch: HWND,
@@ -239,6 +240,7 @@ unsafe fn update_page_controls(state: &mut SetupState) {
     let sw_finish = if show_finish { SW_SHOW } else { SW_HIDE };
 
     let _ = ShowWindow(state.hwnd_dest_edit, sw_dest);
+    let _ = ShowWindow(state.hwnd_btn_browse, sw_dest);
     let _ = ShowWindow(state.hwnd_chk_desktop, sw_tasks);
     let _ = ShowWindow(state.hwnd_chk_startmenu, sw_tasks);
     let _ = ShowWindow(state.hwnd_chk_launch, sw_finish);
@@ -280,15 +282,24 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             let state = SETUP_STATE.as_mut().unwrap();
             let hinst = GetModuleHandleW(None).unwrap();
 
-            // Destination Edit Box
+            // Destination Edit Box & Browse Button
             let dest_wstr: Vec<u16> = state.dest_path.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
             state.hwnd_dest_edit = CreateWindowExW(
                 WINDOW_EX_STYLE(0),
                 w!("EDIT"),
                 PCWSTR(dest_wstr.as_ptr()),
                 WS_CHILD | WS_BORDER | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
-                185, 120, 310, 24,
+                185, 120, 235, 24,
                 hwnd, HMENU(ID_EDIT_DEST as _), hinst, None,
+            );
+
+            state.hwnd_btn_browse = CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                w!("BUTTON"),
+                w!("Browse..."),
+                WS_CHILD | WINDOW_STYLE(BS_PUSHBUTTON as u32),
+                426, 120, 74, 24,
+                hwnd, HMENU(ID_BTN_BROWSE as _), hinst, None,
             );
 
             // Tasks Checkboxes
@@ -377,6 +388,15 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                                 InvalidateRect(hwnd, None, TRUE);
                             }
                             WizardPage::Destination => {
+                                let mut buf = [0u16; 512];
+                                let len = GetWindowTextW(state.hwnd_dest_edit, &mut buf);
+                                if len > 0 {
+                                    let raw = String::from_utf16_lossy(&buf[..len as usize]);
+                                    let trimmed = raw.trim();
+                                    if !trimmed.is_empty() {
+                                        state.dest_path = PathBuf::from(trimmed);
+                                    }
+                                }
                                 state.page = WizardPage::Tasks;
                                 update_page_controls(state);
                                 InvalidateRect(hwnd, None, TRUE);
@@ -422,6 +442,36 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                         );
                         if res == IDYES {
                             PostQuitMessage(0);
+                        }
+                    }
+                    ID_BTN_BROWSE => {
+                        let current_path = {
+                            let mut buf = [0u16; 512];
+                            let len = GetWindowTextW(state.hwnd_dest_edit, &mut buf);
+                            if len > 0 {
+                                String::from_utf16_lossy(&buf[..len as usize])
+                            } else {
+                                state.dest_path.to_string_lossy().to_string()
+                            }
+                        };
+                        let ps_cmd = format!(
+                            "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select Installation Folder for VrV Desk'; $f.SelectedPath = '{}'; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{ Write-Output $f.SelectedPath }}",
+                            current_path.replace('\'', "''")
+                        );
+                        if let Ok(output) = Command::new("powershell")
+                            .args(["-NoProfile", "-Command", &ps_cmd])
+                            .output()
+                        {
+                            let selected = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                            if !selected.is_empty() {
+                                let mut target_folder = PathBuf::from(selected);
+                                if !target_folder.ends_with("VrV Desk") {
+                                    target_folder = target_folder.join("VrV Desk");
+                                }
+                                let wstr: Vec<u16> = target_folder.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
+                                let _ = SetWindowTextW(state.hwnd_dest_edit, PCWSTR(wstr.as_ptr()));
+                                state.dest_path = target_folder;
+                            }
                         }
                     }
                     _ => {}
@@ -628,6 +678,7 @@ fn main() {
             install_progress: Arc::new(AtomicU32::new(0)),
             install_status: Arc::new(std::sync::Mutex::new("Preparing installation...".to_string())),
             hwnd_dest_edit: HWND::default(),
+            hwnd_btn_browse: HWND::default(),
             hwnd_chk_desktop: HWND::default(),
             hwnd_chk_startmenu: HWND::default(),
             hwnd_chk_launch: HWND::default(),
