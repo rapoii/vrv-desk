@@ -29,7 +29,7 @@
 - Consumes: None (pure Rust + serde)
 - Produces: `DirtyRect`, `DirtyFrameInfo`, bounding box, area calculation, and subregion helper methods.
 
-- [ ] **Step 1: Write failing unit tests for `DirtyRect` in `rust/tests/dirty_rect_test.rs`**
+- [x] **Step 1: Write failing unit tests for `DirtyRect` in `rust/tests/dirty_rect_test.rs`**
 
 ```rust
 use mirror_core::dirty_rect::{DirtyRect, DirtyFrameInfo};
@@ -60,21 +60,21 @@ fn test_dirty_frame_info_metrics() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --test dirty_rect_test`
 Expected: FAIL with "unresolved import `mirror_core::dirty_rect`"
 
-- [ ] **Step 3: Implement `DirtyRect` and `DirtyFrameInfo` in `rust/src/dirty_rect.rs`**
+- [x] **Step 3: Implement `DirtyRect` and `DirtyFrameInfo` in `rust/src/dirty_rect.rs`**
 
 Define `DirtyRect`, `new`, `width`, `height`, `area`, `is_empty`, `union`, `bounding_box`, `total_area`, and `DirtyFrameInfo` with ratio calculations. Export in `rust/src/lib.rs`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --test dirty_rect_test`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add rust/src/dirty_rect.rs rust/src/lib.rs rust/tests/dirty_rect_test.rs
@@ -93,15 +93,15 @@ git commit -m "feat(core): add DirtyRect geometry and DirtyFrameInfo metrics"
 - Consumes: `IDXGIOutputDuplication::GetFrameDirtyRects`, `DXGI_OUTDUPL_FRAME_INFO`
 - Produces: `capture_raw_bgra_with_dirty(&mut self, timeout_ms: u32) -> Result<Option<(u32, u32, Vec<u8>, DirtyFrameInfo)>, String>` and dirty-aware skip in `capture_raw_bgra`.
 
-- [ ] **Step 1: Write integration test for dirty rect capture or mock capture**
+- [x] **Step 1: Write integration test for dirty rect capture or mock capture**
 
 Add tests in `rust/tests/dirty_rect_test.rs` testing `DxgiCapturer` dirty rect API or mock frame metadata filtering.
 
-- [ ] **Step 2: Run test to verify failure or compile status**
+- [x] **Step 2: Run test to verify failure or compile status**
 
 Run: `cargo test --test dirty_rect_test`
 
-- [ ] **Step 3: Implement `GetFrameDirtyRects` in `windows_capture.rs`**
+- [x] **Step 3: Implement `GetFrameDirtyRects` in `windows_capture.rs`**
 
 - Read `frame_info.TotalMetadataBufferSize`.
 - When `frame_info.AccumulatedFrames == 0 && frame_info.TotalMetadataBufferSize == 0`:
@@ -111,12 +111,12 @@ Run: `cargo test --test dirty_rect_test`
 - If dirty rects are empty and `AccumulatedFrames == 0`, skip staging texture copy and return `Ok(None)`.
 - Implement `capture_raw_bgra_with_dirty` returning `(width, height, bgra, DirtyFrameInfo)`.
 
-- [ ] **Step 4: Run full test suite to ensure zero regressions**
+- [x] **Step 4: Run full test suite to ensure zero regressions**
 
 Run: `cargo test`
 Expected: All tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add rust/src/platform/windows_capture.rs rust/tests/dirty_rect_test.rs
@@ -135,19 +135,19 @@ git commit -m "feat(dxgi): implement GetFrameDirtyRects and static frame bypass"
 - Consumes: `capture_raw_bgra_with_dirty`, `capture_h264_with_dirty`
 - Produces: Live logging of dirty area metrics and reduced idle CPU/GPU usage in `vrv_host.exe`.
 
-- [ ] **Step 1: Expose `capture_h264_with_dirty` and `capture_raw_bgra_with_dirty` on `HybridScreenCapturer`**
+- [x] **Step 1: Expose `capture_h264_with_dirty` and `capture_raw_bgra_with_dirty` on `HybridScreenCapturer`**
 
 Add wrapper methods with GDI fallback (GDI returns full screen dirty rect `DirtyRect::new(0, 0, w, h)`).
 
-- [ ] **Step 2: Update `vrv_host.rs` frame streaming task**
+- [x] **Step 2: Update `vrv_host.rs` frame streaming task**
 
 Integrate dirty frame info logging on significant updates, confirming dirty rect count and ratio.
 
-- [ ] **Step 3: Test and verify compile**
+- [x] **Step 3: Test and verify compile**
 
 Run: `cargo test` and `cargo check --bin vrv_host`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add rust/src/platform/windows_capture.rs rust/src/bin/vrv_host.rs
