@@ -13,7 +13,7 @@ Aplikasi screen mirror dan remote control dua arah (PC mengontrol Android dan An
 - **Ultra-rendah latensi (<30ms pada jaringan LAN)**.
 - **Konsumsi resource minimal** (CPU utilization < 10%, RAM < 120MB, zero-copy VRAM to encoder pipeline).
 - **Modern & Bebas Hambatan:** Tanpa iklan, tanpa batasan durasi waktu sesi, tanpa keharusan membuat akun cloud terpusat.
-- **Hybrid Networking:** Zero-config mDNS/UDP auto-discovery di jaringan Wi-Fi lokal, serta P2P WebRTC NAT Traversal (STUN) saat terhubung lewat Internet publik.
+- **Hybrid Networking:** Zero-config UDP auto-discovery di jaringan Wi-Fi lokal (:53210), serta Internet Signaling Rendezvous Broker (`vrv_signal`) dengan RFC 5389 STUN endpoint resolution.
 
 ---
 
@@ -30,7 +30,7 @@ Sistem menggunakan pola arsitektur **Shared Native Core** dengan **Flutter Prese
 ┌───────────────────▼────────────────────────────────┴───────────────────┐
 │                           Rust Core Engine                             │
 │  ├── Session & State Manager (Device ID, One-Time PIN, QR Token)       │
-│  ├── WebRTC / P2P Transport (DataChannel for input, MediaStream tracks)│
+│  ├── E2EE Network Transport (WebSocket + VE2E ChaCha20-Poly1305 AEAD)  │
 │  ├── LAN Discovery Service (UDP Broadcast / Multicast on port 53210)   │
 │  └── E2EE Cryptography Engine (Ed25519, X25519, ChaCha20-Poly1305)     │
 └───────────────────▲────────────────────────────────▲───────────────────┘
@@ -102,27 +102,28 @@ Sistem menggunakan pola arsitektur **Shared Native Core** dengan **Flutter Prese
   }
   ```
 - **Koneksi LAN Langsung:**
-  - Begitu perangkat dipilih dari daftar LAN, inisiasi koneksi langsung via TCP/UDP Socket lokal terenkripsi (tanpa bergantung pada STUN/TURN maupun internet).
+  - Begitu perangkat dipilih dari daftar LAN, inisiasi koneksi langsung via WebSocket TCP lokal terenkripsi port 53211 (tanpa bergantung pada STUN/relay maupun internet).
 
-### 4.2. Remote P2P & NAT Traversal (Internet)
-- **WebRTC Data & Media Transport:**
-  - Menggunakan WebRTC ICE framework dengan public STUN servers (e.g. `stun.l.google.com:19302`, `stun.cloudflare.com:3478`).
-  - Mendukung Direct P2P Hole Punching untuk Full Cone, Restricted Cone, dan Port Restricted Cone NAT.
-- **Stateless Signaling Protocol:**
-  - Pertukaran SDP Offer/Answer dan ICE Candidates via lightweight websocket rendezvous worker (stateless, hanya mencocokkan hash Device ID tujuan dan langsung membuang sesi setelah handshake selesai).
-- **Relay Fallback:**
-  - Turn relay fallback ringan otomatis aktif jika kedua perangkat berada di balik Symmetric NAT (firewall ketat).
+### 4.2. Remote P2P & Signaling Rendezvous (Internet)
+- **RFC 5389 STUN Resolution:**
+  - Host melakukan STUN binding request ke server publik (`stun.l.google.com:19302`) untuk mendeteksi mapped public endpoint (IP dan port eksternal).
+- **Stateless Signaling & Relay Broker (`vrv_signal`):**
+  - Broker WebSocket ringan pada port 53212 bertugas mencocokkan target 6-digit Device ID antara Client dan Host.
+  - Broker memfasilitasi pertukaran sesi dan bertindak sebagai zero-copy bidirectional relay bridge (`bridge_websockets`) untuk melewatkan ciphertext terenkripsi antar-perangkat di balik NAT tanpa overhead library WebRTC (~50 MB) yang mendegradasi ketajaman teks layar.
 
 ### 4.3. Security & End-to-End Encryption (E2EE)
 - **Identitas Kriptografis:**
   - Setiap instalasi aplikasi men-generate pasangan kunci Ed25519 (identitas) dan X25519 (key exchange).
   - Device ID (6 digit angka) diturunkan dari truncated SHA-256 hash dari Public Key perangkat.
 - **Pairing Handshake:**
-  - **Dynamic One-Time PIN:** 6 digit PIN numerik di-generate dengan masa berlaku 120 detik. PIN digunakan sebagai Pre-Shared Key (PSK) dalam Diffie-Hellman Key Exchange (SPAKE2 / HKDF).
-  - **QR Code Pairing:** Host menampilkan QR Code berisi `{ id, pubkey, nonce, session_token }`. Client melakukan scan untuk verifikasi seketika tanpa input manual.
-- **Kanal Data & Media Terenkripsi:**
-  - Seluruh media track (video/audio) dienkripsi dengan **DTLS-SRTP**.
-  - Seluruh kontrol data (mouse, touch gesture, keyboard, clipboard) dienkripsi menggunakan **ChaCha20-Poly1305 AEAD**.
+  - **Dynamic One-Time PIN:** 6 digit PIN numerik di-generate saat host startup. PIN digunakan untuk memverifikasi handshake autentikasi (`auth_verify` / `auth_ok`) dengan proteksi brute-force lockout (maksimal 3 percobaan).
+  - **Derivasi Kunci Sesi E2EE:** Key simetris 256-bit diturunkan bersama oleh Host dan Client menggunakan SHA-256 dengan salt unik (`VRV_DESK_E2EE_KEY_SALT_v1:<token>`).
+  - **QR Code Pairing:** Host menampilkan QR Code berisi JSON / URI `vrvdesk://connect?id=...&ip=...&port=53211&pin=...`. Client melakukan scan via `mobile_scanner` untuk verifikasi instan tanpa input manual.
+- **Kanal Data & Media Terenkripsi (`VE2E` Framing):**
+  - Seluruh frame video (`VH24`), audio Opus stereo (`VAUD`), serta kontrol remote (mouse, touch gesture, keyboard, clipboard) dibungkus enkripsi terpadu **ChaCha20-Poly1305 AEAD**.
+  - **Struktur Framing Paket Biner:**
+    `[0..4] b"VE2E"` (Magic) + `[4..12] Sequence Counter 64-bit (Anti-Replay)` + `[12..end] Ciphertext` + `Tag MAC Poly1305 16-byte (Anti-Tamper)`.
+  - Server relay broker hanya meneruskan ciphertext dan sama sekali tidak dapat melihat isi layar, audio, atau keystroke pengguna.
 
 ---
 
