@@ -170,8 +170,9 @@ class MainActivity : FlutterActivity() {
                     val height = call.argument<Int>("height") ?: 720
                     val bitrate = call.argument<Int>("bitrate") ?: 2_500_000
                     val fps = call.argument<Int>("fps") ?: 30
+                    val enableAudio = call.argument<Boolean>("enableAudio") ?: true
 
-                    startCaptureService(resultCode, intentData, width, height, bitrate, fps)
+                    startCaptureService(resultCode, intentData, width, height, bitrate, fps, enableAudio)
                     result.success(true)
                 }
                 "stopCapture" -> {
@@ -180,6 +181,10 @@ class MainActivity : FlutterActivity() {
                 }
                 "isCapturing" -> {
                     result.success(MediaProjectionService.isRunning)
+                }
+                "isInternalAudioSupported" -> {
+                    val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                    result.success(supported)
                 }
                 else -> {
                     result.notImplemented()
@@ -311,7 +316,8 @@ class MainActivity : FlutterActivity() {
         width: Int,
         height: Int,
         bitrate: Int,
-        fps: Int
+        fps: Int,
+        enableAudio: Boolean = true
     ) {
         val effectiveCode = if (resultCode != 0) resultCode else lastProjectionResultCode
         val effectiveData = intentData ?: lastProjectionIntentData
@@ -329,6 +335,7 @@ class MainActivity : FlutterActivity() {
             putExtra(MediaProjectionService.EXTRA_HEIGHT, height)
             putExtra(MediaProjectionService.EXTRA_BITRATE, bitrate)
             putExtra(MediaProjectionService.EXTRA_FPS, fps)
+            putExtra(MediaProjectionService.EXTRA_ENABLE_AUDIO, enableAudio)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

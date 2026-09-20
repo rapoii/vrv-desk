@@ -8,6 +8,10 @@ import android.content.Context
 import android.content.Intent
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioPlaybackCaptureConfiguration
+import android.media.AudioRecord
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
@@ -36,10 +40,15 @@ class MediaProjectionService : Service() {
         const val EXTRA_HEIGHT = "height"
         const val EXTRA_BITRATE = "bitrate"
         const val EXTRA_FPS = "fps"
+        const val EXTRA_ENABLE_AUDIO = "enable_audio"
 
         private val VH24_MAGIC = byteArrayOf(0x56, 0x48, 0x32, 0x34) // "VH24"
+        private val VAUD_MAGIC = byteArrayOf(0x56, 0x41, 0x55, 0x44) // "VAUD"
+        private const val AUDIO_FORMAT_PCM_S16LE: Byte = 0x01
+        private const val AUDIO_CHANNELS_STEREO: Byte = 0x02
+        private const val AUDIO_SAMPLE_RATE_48K = 48000
 
-        // Callback for streaming encoded VH24 video packets
+        // Callback for streaming encoded VH24 video and VAUD audio packets
         var frameListener: ((ByteArray) -> Unit)? = null
         var isRunning: Boolean = false
             private set
@@ -53,6 +62,10 @@ class MediaProjectionService : Service() {
     private var encoderThread: Thread? = null
     private val isCapturing = AtomicBoolean(false)
     private var sequenceNumber: Int = 0
+
+    private var audioRecord: AudioRecord? = null
+    private var audioCaptureThread: Thread? = null
+    private val isAudioCapturing = AtomicBoolean(false)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -78,10 +91,11 @@ class MediaProjectionService : Service() {
                 val height = intent.getIntExtra(EXTRA_HEIGHT, 720)
                 val bitrate = intent.getIntExtra(EXTRA_BITRATE, 2_500_000)
                 val fps = intent.getIntExtra(EXTRA_FPS, 30)
+                val enableAudio = intent.getBooleanExtra(EXTRA_ENABLE_AUDIO, true)
 
                 if (resultData != null && resultCode != 0) {
                     startForeground(NOTIFICATION_ID, buildNotification())
-                    startScreenCapture(resultCode, resultData, width, height, bitrate, fps)
+                    startScreenCapture(resultCode, resultData, width, height, bitrate, fps, enableAudio)
                 } else {
                     Log.e(TAG, "Missing resultCode or intentData for startCapture")
                     stopSelf()
@@ -146,7 +160,8 @@ class MediaProjectionService : Service() {
         width: Int,
         height: Int,
         bitrate: Int,
-        fps: Int
+        fps: Int,
+        enableAudio: Boolean = true
     ) {
         if (isCapturing.get()) {
             Log.w(TAG, "Screen capture is already active")
@@ -214,10 +229,95 @@ class MediaProjectionService : Service() {
                 start()
             }
 
-            Log.i(TAG, "Screen capture started successfully (${width}x${height}, ${bitrate}bps, ${fps}fps)")
+            // 4. Start Internal Audio Capture (Android 10+)
+            if (enableAudio) {
+                startAudioCapture(projection)
+            }
+
+            Log.i(TAG, "Screen capture started successfully (${width}x${height}, ${bitrate}bps, ${fps}fps, audio=$enableAudio)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start screen capture: ${e.message}", e)
             stopScreenCapture()
+        }
+    }
+
+    private fun startAudioCapture(projection: MediaProjection) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Log.w(TAG, "AudioPlaybackCapture is only supported on Android 10 (API 29)+")
+            return
+        }
+
+        try {
+            val config = AudioPlaybackCaptureConfiguration.Builder(projection)
+                .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
+                .addMatchingUsage(AudioAttributes.USAGE_GAME)
+                .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+                .build()
+
+            val audioFormat = AudioFormat.Builder()
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setSampleRate(AUDIO_SAMPLE_RATE_48K)
+                .setChannelMask(AudioFormat.CHANNEL_IN_STEREO)
+                .build()
+
+            val minBufferSize = AudioRecord.getMinBufferSize(
+                AUDIO_SAMPLE_RATE_48K,
+                AudioFormat.CHANNEL_IN_STEREO,
+                AudioFormat.ENCODING_PCM_16BIT
+            )
+
+            // 20ms chunk at 48kHz stereo 16-bit = 48000 * 2 channels * 2 bytes * 0.02s = 3840 bytes
+            val chunkSize = 3840
+            val bufferSize = minBufferSize.coerceAtLeast(chunkSize * 4)
+
+            val record = AudioRecord.Builder()
+                .setAudioPlaybackCaptureConfig(config)
+                .setAudioFormat(audioFormat)
+                .setBufferSizeInBytes(bufferSize)
+                .build()
+
+            if (record.state != AudioRecord.STATE_INITIALIZED) {
+                Log.e(TAG, "AudioRecord failed to initialize for internal playback capture")
+                record.release()
+                return
+            }
+
+            record.startRecording()
+            audioRecord = record
+            isAudioCapturing.set(true)
+
+            audioCaptureThread = Thread({ drainAudio(record, chunkSize) }, "VrVDesk-AudioDrain").apply {
+                isDaemon = true
+                start()
+            }
+
+            Log.i(TAG, "Internal audio capture started successfully (48kHz Stereo PCM)")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException starting internal audio capture: ${e.message}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting internal audio capture: ${e.message}", e)
+        }
+    }
+
+    private fun drainAudio(record: AudioRecord, chunkSize: Int) {
+        val buffer = ByteArray(chunkSize)
+        while (isAudioCapturing.get() && isCapturing.get()) {
+            try {
+                val readBytes = record.read(buffer, 0, buffer.size)
+                if (readBytes > 0) {
+                    val chunk = if (readBytes == buffer.size) buffer else buffer.copyOf(readBytes)
+                    val vaudPacket = packageVaudFrame(chunk)
+                    frameListener?.invoke(vaudPacket)
+                } else if (readBytes < 0) {
+                    Log.w(TAG, "AudioRecord read error code: $readBytes")
+                    break
+                }
+            } catch (e: Exception) {
+                if (isAudioCapturing.get()) {
+                    Log.e(TAG, "Error draining AudioRecord: ${e.message}")
+                }
+                break
+            }
         }
     }
 
@@ -350,12 +450,67 @@ class MediaProjectionService : Service() {
         return packet
     }
 
+    /**
+     * Packages raw PCM audio buffer into standard 8-byte VAUD packet:
+     * [0..4]   b"VAUD" (ASCII 0x56, 0x41, 0x55, 0x44)
+     * [4]      format (0x01 = PCM S16LE)
+     * [5]      channels (0x02 = Stereo)
+     * [6..8]   sample rate as 16-bit little-endian integer (48000 -> 0x80, 0xBB)
+     * [8..]    raw PCM payload
+     */
+    private fun packageVaudFrame(pcmPayload: ByteArray): ByteArray {
+        val totalLength = 8 + pcmPayload.size
+        val packet = ByteArray(totalLength)
+
+        // [0..4] b"VAUD"
+        System.arraycopy(VAUD_MAGIC, 0, packet, 0, 4)
+
+        // [4] format: 0x01
+        packet[4] = AUDIO_FORMAT_PCM_S16LE
+
+        // [5] channels: 2
+        packet[5] = AUDIO_CHANNELS_STEREO
+
+        // [6..8] sample rate: 48000 little-endian
+        packet[6] = (AUDIO_SAMPLE_RATE_48K and 0xFF).toByte()
+        packet[7] = ((AUDIO_SAMPLE_RATE_48K ushr 8) and 0xFF).toByte()
+
+        // [8..] PCM payload
+        System.arraycopy(pcmPayload, 0, packet, 8, pcmPayload.size)
+
+        return packet
+    }
+
+    private fun stopAudioCapture() {
+        if (!isAudioCapturing.getAndSet(false)) return
+        try {
+            audioCaptureThread?.interrupt()
+            audioCaptureThread = null
+
+            audioRecord?.apply {
+                if (state == AudioRecord.STATE_INITIALIZED) {
+                    try {
+                        stop()
+                    } catch (ignored: Exception) {}
+                }
+                release()
+            }
+            audioRecord = null
+            Log.i(TAG, "Internal audio capture stopped successfully")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error stopping audio capture: ${e.message}")
+        }
+    }
+
     @Synchronized
     private fun stopScreenCapture() {
         if (!isCapturing.getAndSet(false)) {
             return
         }
         isRunning = false
+
+        // Stop internal audio capture
+        stopAudioCapture()
 
         try {
             encoderThread?.interrupt()
