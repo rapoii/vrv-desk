@@ -18,10 +18,10 @@
   - No database account, no server tracking, no session recording.
   - Deterministic **6-digit Device ID** derived from Ed25519 identity key (`SHA-256`).
   - Ephemeral **X25519 Diffie-Hellman** key exchange paired with dynamic 6-digit PIN verification.
-  - Streaming payload encrypted via **ChaCha20-Poly1305** and DTLS-SRTP.
+  - Streaming payload encrypted via **ChaCha20-Poly1305 AEAD** (`VE2E` 28-byte wire framing).
 - **🌐 Hybrid Discovery & Connectivity:**
   - **LAN Zero-Config:** UDP Multicast beacon (`239.255.42.99:53210`) automatically detects nearby devices on the same Wi-Fi within milliseconds.
-  - **Internet Remote Access:** Direct WebRTC P2P (ICE / STUN) with transparent NAT hole punching.
+  - **Internet Remote Access:** Stateless Signaling Rendezvous Broker (`vrv_signal`) with RFC 5389 STUN endpoint resolution.
 - **💻 Minimal Resource Footprint (Low-End Device Friendly):**
   - CPU usage: `< 6%`
   - RAM footprint: `< 90MB` on Windows
@@ -40,8 +40,8 @@
 ┌──────────────▼──────────────────────────┴──────────────┐
 │                    Rust Core Engine                    │
 │  ├── Session & State Manager (Device ID, PIN, Pairing) │
-│  ├── WebRTC / P2P Transport (DataChannel & MediaTrack) │
-│  ├── LAN Discovery Engine (UDP Multicast / mDNS)       │
+│  ├── E2EE Transport (WebSocket + VE2E ChaCha20-Poly1305)│
+│  ├── LAN Discovery Engine (UDP Multicast / Broadcast)  │
 │  └── E2E Crypto Manager (X25519 + ChaCha20-Poly1305)   │
 └──────────────▲──────────────────────────▲──────────────┘
                │                          │
@@ -64,7 +64,7 @@ Detailed architectural specifications and design decisions can be found in [`doc
 - **Core Engine:** Rust (Edition 2021)
 - **FFI Bridge:** `flutter_rust_bridge` v2
 - **Cryptography:** `ed25519-dalek`, `x25519-dalek`, `chacha20poly1305`, `sha2`, `rand`
-- **Networking:** `tokio`, `socket2`, UDP Multicast, WebRTC
+- **Networking:** `tokio`, `socket2`, `tokio-tungstenite`, UDP Discovery, RFC 5389 STUN
 - **Platform Drivers:**
   - Windows: Win32 API (`windows` crate), DXGI Desktop Duplication, `SendInput`
   - Android: Kotlin MediaProjection, MediaCodec, AccessibilityService
