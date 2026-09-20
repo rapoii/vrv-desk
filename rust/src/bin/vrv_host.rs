@@ -56,6 +56,14 @@ enum ClientInput {
     FsMkdir { id: String, path: String },
     #[serde(rename = "fs_delete")]
     FsDelete { id: String, path: String, is_dir: bool },
+    #[serde(rename = "system_sas")]
+    SystemSas,
+    #[serde(rename = "system_elevate")]
+    SystemElevate,
+    #[serde(rename = "service_status")]
+    ServiceStatus,
+    #[serde(rename = "system_desktop_switch")]
+    SystemDesktopSwitch,
 }
 
 fn parse_cli_args() -> (Option<String>, Option<String>, Option<String>) {
@@ -717,6 +725,57 @@ where
                                         error: e,
                                     }).unwrap(),
                                 };
+                                let mut sender = ws_sender_input.lock().await;
+                                let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;
+                            }
+                            ClientInput::SystemSas => {
+                                println!("[Input] Received system_sas command");
+                                let pipe_res = mirror_core::service_manager::send_pipe_command(r#"{"cmd":"sas"}"#).await;
+                                let success = if pipe_res.is_ok() {
+                                    true
+                                } else {
+                                    mirror_core::service_manager::trigger_sas().is_ok()
+                                };
+                                let resp = serde_json::json!({
+                                    "type": "system_sas_result",
+                                    "success": success,
+                                }).to_string();
+                                let mut sender = ws_sender_input.lock().await;
+                                let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;
+                            }
+                            ClientInput::SystemElevate => {
+                                println!("[Input] Received system_elevate command");
+                                let curr_exe = std::env::current_exe().unwrap_or_default();
+                                let exe_str = curr_exe.to_str().unwrap_or("");
+                                let res = mirror_core::service_manager::request_elevation(Some(exe_str), Some("--elevated"));
+                                let resp = serde_json::json!({
+                                    "type": "system_elevate_result",
+                                    "success": res.is_ok(),
+                                    "error": res.err(),
+                                }).to_string();
+                                let mut sender = ws_sender_input.lock().await;
+                                let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;
+                            }
+                            ClientInput::ServiceStatus => {
+                                let status = mirror_core::service_manager::get_service_status();
+                                let resp = serde_json::json!({
+                                    "type": "service_status_result",
+                                    "installed": status.installed,
+                                    "running": status.running,
+                                    "elevated": status.elevated,
+                                    "is_service": status.is_service,
+                                }).to_string();
+                                let mut sender = ws_sender_input.lock().await;
+                                let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;
+                            }
+                            ClientInput::SystemDesktopSwitch => {
+                                println!("[Input] Received system_desktop_switch command");
+                                let res = mirror_core::service_manager::switch_to_input_desktop();
+                                let resp = serde_json::json!({
+                                    "type": "system_desktop_switch_result",
+                                    "success": res.is_ok(),
+                                    "error": res.err(),
+                                }).to_string();
                                 let mut sender = ws_sender_input.lock().await;
                                 let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;
                             }

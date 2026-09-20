@@ -345,10 +345,16 @@ class _MirrorViewState extends State<MirrorView> {
   }
 
   void _sendShortcut(String shortcutName) {
-    _sendInput({
-      'type': 'shortcut',
-      'name': shortcutName,
-    });
+    if (shortcutName == 'ctrl_alt_del') {
+      _sendInput({'type': 'system_sas'});
+    } else if (shortcutName == 'elevate') {
+      _sendInput({'type': 'system_elevate'});
+    } else {
+      _sendInput({
+        'type': 'shortcut',
+        'name': shortcutName,
+      });
+    }
   }
 
   Future<void> _handleTextMessage(String message) async {
@@ -447,6 +453,34 @@ class _MirrorViewState extends State<MirrorView> {
           }
         } else if (type != null && type.startsWith('fs_')) {
           _fileMessageStreamController.add(message);
+        } else if (type == 'system_sas_result') {
+          final success = json['success'] == true;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(success
+                    ? '⚡ Sent Ctrl+Alt+Del (SAS) to remote host'
+                    : '⚠️ Failed to trigger Ctrl+Alt+Del on host'),
+                backgroundColor: success ? Colors.green : Colors.orange,
+                duration: const Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } else if (type == 'system_elevate_result') {
+          final success = json['success'] == true;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(success
+                    ? '🛡️ Host Administrator elevation requested'
+                    : '⚠️ Host elevation request failed'),
+                backgroundColor: success ? Colors.blueAccent : Colors.redAccent,
+                duration: const Duration(seconds: 3),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
         } else if (type == 'clipboard_sync' && json['text'] is String) {
           final text = json['text'] as String;
           _lastRemoteClipboard = text;

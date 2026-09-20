@@ -54,6 +54,14 @@ enum ClientInput {
     FsMkdir { id: String, path: String },
     #[serde(rename = "fs_delete")]
     FsDelete { id: String, path: String, is_dir: bool },
+    #[serde(rename = "system_sas")]
+    SystemSas,
+    #[serde(rename = "system_elevate")]
+    SystemElevate,
+    #[serde(rename = "service_status")]
+    ServiceStatus,
+    #[serde(rename = "system_desktop_switch")]
+    SystemDesktopSwitch,
 }
 
 #[derive(Clone)]
@@ -674,6 +682,57 @@ where
                                     error: e,
                                 }).unwrap(),
                             };
+                            let mut sender = ws_sender_input.lock().await;
+                            let _ = sender.send(Message::Text(resp.into())).await;
+                        }
+                        ClientInput::SystemSas => {
+                            telemetry_input.add_log("Client requested Secure Attention Sequence (Ctrl+Alt+Del)".to_string());
+                            let pipe_res = crate::service_manager::send_pipe_command(r#"{"cmd":"sas"}"#).await;
+                            let success = if pipe_res.is_ok() {
+                                true
+                            } else {
+                                crate::service_manager::trigger_sas().is_ok()
+                            };
+                            let resp = serde_json::json!({
+                                "type": "system_sas_result",
+                                "success": success,
+                            }).to_string();
+                            let mut sender = ws_sender_input.lock().await;
+                            let _ = sender.send(Message::Text(resp.into())).await;
+                        }
+                        ClientInput::SystemElevate => {
+                            telemetry_input.add_log("Client requested host UAC elevation".to_string());
+                            let curr_exe = std::env::current_exe().unwrap_or_default();
+                            let exe_str = curr_exe.to_str().unwrap_or("");
+                            let res = crate::service_manager::request_elevation(Some(exe_str), Some("--elevated"));
+                            let resp = serde_json::json!({
+                                "type": "system_elevate_result",
+                                "success": res.is_ok(),
+                                "error": res.err(),
+                            }).to_string();
+                            let mut sender = ws_sender_input.lock().await;
+                            let _ = sender.send(Message::Text(resp.into())).await;
+                        }
+                        ClientInput::ServiceStatus => {
+                            let status = crate::service_manager::get_service_status();
+                            let resp = serde_json::json!({
+                                "type": "service_status_result",
+                                "installed": status.installed,
+                                "running": status.running,
+                                "elevated": status.elevated,
+                                "is_service": status.is_service,
+                            }).to_string();
+                            let mut sender = ws_sender_input.lock().await;
+                            let _ = sender.send(Message::Text(resp.into())).await;
+                        }
+                        ClientInput::SystemDesktopSwitch => {
+                            telemetry_input.add_log("Client requested desktop switch to active input desktop".to_string());
+                            let res = crate::service_manager::switch_to_input_desktop();
+                            let resp = serde_json::json!({
+                                "type": "system_desktop_switch_result",
+                                "success": res.is_ok(),
+                                "error": res.err(),
+                            }).to_string();
                             let mut sender = ws_sender_input.lock().await;
                             let _ = sender.send(Message::Text(resp.into())).await;
                         }

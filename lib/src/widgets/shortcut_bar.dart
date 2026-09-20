@@ -18,6 +18,8 @@ class ShortcutBar extends StatelessWidget {
     {'label': 'TaskMgr', 'id': 'task_manager'},
     {'label': 'Alt+Tab', 'id': 'alt_tab'},
     {'label': 'Desktop', 'id': 'show_desktop'},
+    {'label': 'Ctrl+Alt+Del', 'id': 'ctrl_alt_del'},
+    {'label': '🛡️ Elevate', 'id': 'elevate'},
   ];
 
   @override

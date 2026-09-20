@@ -33,6 +33,7 @@ struct AppState {
     device_id: String,
     pin: Arc<std::sync::RwLock<String>>,
     unattended: Arc<std::sync::RwLock<mirror_core::unattended::UnattendedConfig>>,
+    is_elevated: bool,
     host_name: String,
     telemetry: HostTelemetry,
     is_sharing: Arc<AtomicBool>,
@@ -51,6 +52,7 @@ const BTN_TOGGLE_HOST: u32 = 3;
 const BTN_CONNECT: u32 = 4;
 const BTN_CLEAR_LOG: u32 = 5;
 const BTN_UNATTENDED: u32 = 6;
+const BTN_ELEVATE: u32 = 7;
 
 // Button Rectangles
 const RECT_BTN_COPY_ID: RECT = RECT { left: 420, top: 135, right: 510, bottom: 175 };
@@ -59,6 +61,7 @@ const RECT_BTN_TOGGLE_HOST: RECT = RECT { left: 45, top: 255, right: 230, bottom
 const RECT_BTN_UNATTENDED: RECT = RECT { left: 245, top: 255, right: 510, bottom: 295 };
 const RECT_BTN_CONNECT: RECT = RECT { left: 565, top: 255, right: 835, bottom: 295 };
 const RECT_BTN_CLEAR_LOG: RECT = RECT { left: 745, top: 405, right: 835, bottom: 430 };
+const RECT_BTN_ELEVATE: RECT = RECT { left: 495, top: 22, right: 615, bottom: 52 };
 
 fn point_in_rect(pt: POINT, r: RECT) -> bool {
     pt.x >= r.left && pt.x <= r.right && pt.y >= r.top && pt.y <= r.bottom
@@ -145,6 +148,8 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 new_hover = Some(BTN_CONNECT);
             } else if point_in_rect(pt, RECT_BTN_CLEAR_LOG) {
                 new_hover = Some(BTN_CLEAR_LOG);
+            } else if point_in_rect(pt, RECT_BTN_ELEVATE) {
+                new_hover = Some(BTN_ELEVATE);
             }
 
             if let Some(ref mut state) = APP_STATE {
@@ -198,6 +203,12 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 } else if point_in_rect(pt, RECT_BTN_CONNECT) {
                     state.telemetry.add_log("Connecting to remote device...".to_string());
                     InvalidateRect(hwnd, None, BOOL(0));
+                } else if point_in_rect(pt, RECT_BTN_ELEVATE) {
+                    if !state.is_elevated {
+                        state.telemetry.add_log("Requesting Administrator UAC Elevation...".to_string());
+                        let _ = mirror_core::service_manager::request_elevation(None, None);
+                        let _ = PostMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
+                    }
                 }
             }
 
@@ -326,6 +337,14 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     };
     let pill_rect = RECT { left: 630, top: 22, right: 835, bottom: 52 };
     draw_button(hdc, &pill_rect, pill_text, pill_bg, pill_fg);
+
+    // Admin / Elevation Pill
+    let (elev_text, elev_bg, elev_fg) = if state.is_elevated {
+        ("🛡️ ADMIN", 0x001B2B15, COLOR_ACCENT_GREEN)
+    } else {
+        ("▲ ELEVATE", 0x002A2010, 0x00E2B838)
+    };
+    draw_button(hdc, &RECT_BTN_ELEVATE, elev_text, elev_bg, elev_fg);
 
     // 2. Main Action Cards
     // Left Card: This Device (Host)
@@ -502,6 +521,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let unattended = Arc::new(std::sync::RwLock::new(mirror_core::unattended::UnattendedConfig::load()));
     let device_id = get_or_generate_device_id(None);
     let host_name = get_host_name();
+    let is_elevated = mirror_core::service_manager::is_elevated();
     let telemetry = HostTelemetry::default();
     let is_sharing = Arc::new(AtomicBool::new(true));
 
@@ -541,6 +561,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             device_id,
             pin,
             unattended,
+            is_elevated,
             host_name,
             telemetry,
             is_sharing,

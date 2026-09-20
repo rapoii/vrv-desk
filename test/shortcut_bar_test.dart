@@ -28,6 +28,8 @@ void main() {
       expect(find.text('TaskMgr'), findsOneWidget);
       expect(find.text('Alt+Tab'), findsOneWidget);
       expect(find.text('Desktop'), findsOneWidget);
+      expect(find.text('Ctrl+Alt+Del'), findsOneWidget);
+      expect(find.text('🛡️ Elevate'), findsOneWidget);
 
       // Tap buttons and verify correct shortcut identifiers are passed
       await tester.tap(find.text('Win'));
@@ -62,6 +64,16 @@ void main() {
       await tester.pump();
       expect(pressedShortcuts.last, 'show_desktop');
 
+      await tester.ensureVisible(find.text('Ctrl+Alt+Del'));
+      await tester.tap(find.text('Ctrl+Alt+Del'));
+      await tester.pump();
+      expect(pressedShortcuts.last, 'ctrl_alt_del');
+
+      await tester.ensureVisible(find.text('🛡️ Elevate'));
+      await tester.tap(find.text('🛡️ Elevate'));
+      await tester.pump();
+      expect(pressedShortcuts.last, 'elevate');
+
       expect(pressedShortcuts, [
         'win',
         'esc',
@@ -71,6 +83,8 @@ void main() {
         'task_manager',
         'alt_tab',
         'show_desktop',
+        'ctrl_alt_del',
+        'elevate',
       ]);
     });
   });

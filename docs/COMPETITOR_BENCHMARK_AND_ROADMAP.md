@@ -17,11 +17,11 @@
 | **File Transfer Manager** | ✅ **Ada (Dual Panel & Chunk Streaming)** | ✅ Ada (Dedicated UI) | ✅ Ada (Dual Panel) | ✅ Ada (Dual Panel) | ❌ Tidak Ada (Hanya P2P) |
 | **Unattended Access** | ✅ **Ada (Permanent Password + Salt & Dual Auth)** | ✅ Password Tetap + 2FA | ✅ Password Tetap + 2FA | ✅ Whitelist + Security | ✅ Akun Permanen |
 | **Multi-Monitor Switcher** | ❌ Primary Screen Saja | ✅ Multi-Display Switch | ✅ Multi-Tab Display | ✅ Multi-Monitor Switch | ✅ Virtual / Phys Switch |
-| **UAC Elevation & Service** | ❌ User Session Saja | ✅ Windows Service | ✅ Windows Service | ✅ Windows Service | ✅ System Service |
+| **UAC Elevation & Service** | ✅ **Ada (Windows Service & Secure Desktop)** | ✅ Windows Service | ✅ Windows Service | ✅ Windows Service | ✅ System Service |
 | **Virtual Display Driver** | ❌ Butuh Monitor Nyala | ✅ IddSampleDriver | ✅ Display Driver | ✅ Virtual Display | ✅ Parsec VDD / Idd |
 | **Remote Reboot & Auto-Reconnect** | ❌ *Belum Ada* | ✅ Ada (+ Safe Mode) | ✅ Ada | ✅ Ada (+ Safe Mode) | ❌ Tidak Ada |
 | **Privacy Mode (Screen Blanking)** | ❌ *Belum Ada* | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Tidak Ada |
-| **System Shortcuts (Ctrl+Alt+Del)**| ❌ *Belum Ada* | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Terbatas |
+| **System Shortcuts (Ctrl+Alt+Del)**| ✅ **Ada (SAS Dynamic Injection)** | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Terbatas |
 | **In-Session Chat & Whiteboard** | ❌ *Belum Ada* | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Tidak Ada |
 | **Session Recording** | ❌ *Belum Ada* | ✅ Ada | ✅ Ada | ✅ Ada | ❌ Tidak Ada |
 | **Web Client (Browser Remote)** | ❌ *Belum Ada* | ✅ Ada (WASM/WebRTC) | ✅ Ada (go.anydesk.com) | ✅ Ada (Web Client) | ✅ Ada (WebRTC) |
@@ -98,10 +98,12 @@
 - [x] Dukungan penuh filesystem transfer pada Android Host mode (`lib/src/services/android_host_service.dart`).
 - [x] Verifikasi live E2E Python (`test_e2e_file_transfer.py`) dan test suites (145/145 passing: 62 Rust + 83 Flutter).
 
-### Phase 22: Windows Service Daemon & UAC Elevation
-- [ ] Buat binary service mandiri `vrv_service.exe` yang mendaftar ke Windows Service Control Manager (`CreateServiceW`).
-- [ ] Hubungkan komunikasi IPC (Named Pipe) antara `vrv_service.exe` (SYSTEM) dan `vrv_desk.exe` (User Session).
-- [ ] Gunakan `DuplicateTokenEx` dan injeksi `SendSAS` untuk mengeksekusi kontrol pada Secure Desktop (UAC & Lock Screen).
+### Phase 22: Windows Service Daemon & UAC Elevation - [x] **Completed & Verified**
+- [x] Buat binary service mandiri `vrv_service.exe` (`rust/src/bin/vrv_service.rs`) yang mendaftar ke Windows Service Control Manager (`CreateServiceW`) dan mendukung CLI management (`--install`, `--uninstall`, `--start`, `--stop`, `--status`, `--elevate`, `--sas`, `--daemon`).
+- [x] Hubungkan komunikasi IPC (Named Pipe `\\.\pipe\VrVDeskServicePipe`) antara `vrv_service.exe` (SYSTEM) dan `vrv_desk.exe` / `vrv_host.exe` (User Session).
+- [x] Gunakan handoff token ke secure desktop (`OpenInputDesktop` + `SetThreadDesktop`) dan injeksi dinamis `SendSAS` (`sas.dll`) untuk mengeksekusi kontrol pada Secure Desktop (UAC & Lock Screen / Ctrl+Alt+Del).
+- [x] UI desktop elevation badge pada Win32 GUI (`vrv_desk.exe`) dan remote shortcut Ctrl+Alt+Del & Elevate pada mobile viewer (`mirror_view.dart` & `shortcut_bar.dart`).
+- [x] Verifikasi pengujian 149/149 passed (66 Rust + 83 Flutter) dan skrip live E2E Python (`test_e2e_service_uac.py`).
 
 ### Phase 23: Multi-Monitor Enumeration & Output Switcher
 - [ ] Modifikasi `DxgiCapturer` agar mengenumerasi seluruh `IDXGIOutput` yang tersedia pada adapter grafis.

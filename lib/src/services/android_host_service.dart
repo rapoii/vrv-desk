@@ -271,6 +271,33 @@ class AndroidHostService {
         return;
       }
 
+      if (type == 'system_sas') {
+        client.socket.add(jsonEncode({
+          'type': 'system_sas_result',
+          'success': false,
+          'message': 'SAS not supported on Android',
+        }));
+        return;
+      }
+      if (type == 'system_elevate') {
+        client.socket.add(jsonEncode({
+          'type': 'system_elevate_result',
+          'success': false,
+          'message': 'UAC elevation not applicable on Android',
+        }));
+        return;
+      }
+      if (type == 'service_status') {
+        client.socket.add(jsonEncode({
+          'type': 'service_status_result',
+          'installed': false,
+          'running': false,
+          'elevated': false,
+          'is_service': false,
+        }));
+        return;
+      }
+
       _dispatchRemoteInput(json);
     } catch (e) {
       debugPrint('[AndroidHostService] JSON parse error: $e');

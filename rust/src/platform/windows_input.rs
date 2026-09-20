@@ -415,6 +415,12 @@ pub fn inject_shortcut(name: &str) -> Result<(), String> {
                 ];
                 SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
             }
+            "ctrl_alt_del" | "sas" => {
+                let _ = crate::service_manager::trigger_sas();
+            }
+            "elevate" => {
+                let _ = crate::service_manager::request_elevation(None, Some("--elevated"));
+            }
             _ => return Err(format!("Unknown shortcut: {}", name)),
         }
     }
