@@ -14,6 +14,14 @@ path = "src/bin/vrv_host.rs"
 name = "vrv_signal"
 path = "src/bin/vrv_signal.rs"
 
+[[bin]]
+name = "vrv_desk"
+path = "src/bin/vrv_desk.rs"
+
+[[bin]]
+name = "vrv_setup"
+path = "src/bin/vrv_setup.rs"
+
 
 [dependencies]
 flutter_rust_bridge = "=2.0.0"
@@ -52,4 +60,7 @@ features = [
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
     "Win32_System_Variant",
+    "Win32_Graphics_Dwm",
+    "Win32_UI_Controls",
+    "Win32_System_LibraryLoader",
 ]

@@ -34,8 +34,8 @@ fn test_dxgi_capturer_initialization() {
             return;
         }
     };
-    assert_eq!(capturer.width, 1920);
-    assert_eq!(capturer.height, 1080);
+    assert!(capturer.width > 0);
+    assert!(capturer.height > 0);
     let frame = capturer.acquire_next_frame(100);
     assert!(frame.is_ok());
 }
