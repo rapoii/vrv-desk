@@ -1,7 +1,7 @@
 # Specification: Ultra-Lightweight Bidirectional Screen Mirror & Remote Control (Windows & Android)
 
 - **Date:** 2026-09-19
-- **Status:** Approved / In Review
+- **Status:** Implemented & Verified (v0.14.0)
 - **Target Platforms:** Windows 10/11 (Native Desktop) & Android 8.0+ (Mobile)
 - **Primary Tech Stack:** Rust (Core Engine) + Flutter (UI Layer via `flutter_rust_bridge` v2)
 
@@ -188,49 +188,53 @@ Sistem menggunakan pola arsitektur **Shared Native Core** dengan **Flutter Prese
 ## 8. Git Repository Structure
 
 ```
-mirror-remote/
-├── Cargo.toml                    # Rust Workspace
-├── rust_core/                    # Core Shared Engine
+vrv-desk/
+├── Cargo.toml                    # Root Rust Workspace
+├── rust/                         # Native Rust Core Engine & Binaries
 │   ├── Cargo.toml
-│   └── src/
-│       ├── api.rs                # FFI API for flutter_rust_bridge
-│       ├── capture/
-│       │   ├── windows_dxgi.rs   # DXGI Desktop Duplication
-│       │   └── android_bridge.rs # JNI/NDK hooks
-│       ├── encoder/
-│       │   ├── mft_h264.rs       # Windows Media Foundation
-│       │   └── openh264_sw.rs    # Software fallback
-│       ├── audio/
-│       │   └── wasapi.rs         # WASAPI Loopback capture
-│       ├── input/
-│       │   └── win_input.rs      # Win32 SendInput
-│       ├── network/
-│       │   ├── lan_discovery.rs  # UDP Multicast / Broadcast
-│       │   ├── webrtc_transport.rs
-│       │   └── crypto.rs         # E2EE & Handshake
-│       └── lib.rs
-├── flutter_app/                  # Cross-Platform Flutter App
-│   ├── pubspec.yaml
-│   ├── lib/
-│   │   ├── main.dart
-│   │   ├── bridge_generated/     # FRB bindings
+│   ├── src/
+│   │   ├── bin/
+│   │   │   ├── vrv_host.rs       # Windows Host Daemon (:53211 WS)
+│   │   │   └── vrv_signal.rs     # Stateless STUN & Signaling Broker (:53212 WS)
+│   │   ├── platform/
+│   │   │   └── windows_capture.rs# DXGI Desktop Duplication w/ Dirty Rects
+│   │   ├── encoder/
+│   │   │   ├── mft_h264.rs       # Windows Media Foundation Hardware Encoder
+│   │   │   └── h264.rs           # OpenH264 Software Fallback Encoder
+│   │   ├── audio/
+│   │   │   ├── wasapi.rs         # WASAPI Loopback 48kHz Stereo Capture
+│   │   │   └── opus_encoder.rs   # Realtime Opus Compression (32-64kbps)
+│   │   ├── input/
+│   │   │   └── windows_input.rs  # Win32 SendInput Pipeline
+│   │   ├── discovery/
+│   │   │   └── lan.rs            # UDP Multicast / Broadcast (:53210)
+│   │   ├── transport/
+│   │   │   └── e2ee.rs           # ChaCha20-Poly1305 VE2E Framing & Wire Protocol
+│   │   ├── identity.rs           # Ed25519 & 6-Digit Device ID
+│   │   └── pairing/pin.rs        # Dynamic One-Time PIN & Auth Lockout
+│   └── tests/                    # Rust Integration Test Suite (54 tests)
+├── lib/                          # Flutter Cross-Platform Client & Android Host
+│   ├── main.dart
+│   ├── src/
 │   │   ├── views/
-│   │   │   ├── home_view.dart
-│   │   │   ├── session_viewer_view.dart
-│   │   │   └── permissions_view.dart
-│   │   ├── controllers/
-│   │   │   ├── session_controller.dart
-│   │   │   └── discovery_controller.dart
+│   │   │   ├── home_view.dart    # Device Dashboard, LAN Discovery & PIN Dialog
+│   │   │   ├── mirror_view.dart  # Session Viewer, HUD Pill, Trackpad, Quality Switcher
+│   │   │   └── qr_scanner_view.dart # Instant QR Code Scanner
+│   │   ├── services/
+│   │   │   ├── android_host_service.dart # Android Screen/Audio Broadcast & ADB Mode
+│   │   │   ├── e2ee_cipher.dart  # ChaCha20-Poly1305 Dart Framing
+│   │   │   ├── lan_discovery_service.dart
+│   │   │   └── device_id_service.dart
 │   │   └── widgets/
-│   │       ├── lan_device_card.dart
-│   │       └── remote_toolbar.dart
-│   ├── android/
-│   │   └── app/src/main/kotlin/.../
-│   │       ├── CaptureService.kt # MediaProjection & MediaCodec
-│   │       └── InputAccessibilityService.kt
-│   └── windows/
-│       └── runner/
-└── docs/
-    └── superpowers/specs/
-        └── 2026-09-19-screen-mirror-remote-control-design.md
+│   │       ├── host_mode_dialog.dart     # Permissions, Audio & ADB Mode Cards
+│   │       └── qr_pairing_dialog.dart    # QR Code Display
+│   └── bridge_generated/
+├── android/                      # Native Android Host Subsystem (Kotlin)
+│   └── app/src/main/kotlin/com/vrvdesk/app/
+│       ├── MainActivity.kt               # MethodChannels & MediaProjection
+│       ├── MediaProjectionService.kt     # Hardware MediaCodec H.264 + AudioPlaybackCapture
+│       ├── InputAccessibilityService.kt  # Remote Gesture & Navigation Injection
+│       └── AdbInputBridge.kt             # Sub-5ms Shell Injection & 120Hz Scaling
+├── test/                         # Flutter Widget & Unit Test Suite (70 tests)
+└── docs/                         # Specifications, Architecture & Phase Plans
 ```
