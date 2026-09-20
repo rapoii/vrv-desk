@@ -266,6 +266,11 @@ class AndroidHostService {
         return;
       }
 
+      if (type != null && type.startsWith('fs_')) {
+        _handleFileSystemMessage(client, json);
+        return;
+      }
+
       _dispatchRemoteInput(json);
     } catch (e) {
       debugPrint('[AndroidHostService] JSON parse error: $e');
@@ -319,6 +324,162 @@ class AndroidHostService {
       if (client.remainingAttempts <= 0) {
         _removeClient(client);
       }
+    }
+  }
+
+  void _handleFileSystemMessage(_HostClient client, Map<String, dynamic> json) {
+    final type = json['type']?.toString();
+    final id = json['id']?.toString() ?? '';
+
+    try {
+      if (type == 'fs_list') {
+        var path = json['path']?.toString() ?? '';
+        if (path.isEmpty || path == 'roots') {
+          path = Directory.current.path;
+        }
+        final dir = Directory(path);
+        if (!dir.existsSync()) {
+          client.socket.add(jsonEncode({
+            'type': 'fs_error',
+            'id': id,
+            'error': 'Directory does not exist: $path',
+          }));
+          return;
+        }
+
+        final entries = <Map<String, dynamic>>[];
+        for (final entity in dir.listSync()) {
+          final isDir = entity is Directory;
+          final name = entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
+          int size = 0;
+          int modMs = 0;
+          try {
+            final stat = entity.statSync();
+            size = isDir ? 0 : stat.size;
+            modMs = stat.modified.millisecondsSinceEpoch;
+          } catch (_) {}
+          entries.add({
+            'name': name,
+            'is_dir': isDir,
+            'size': size,
+            'modified_ms': modMs,
+          });
+        }
+
+        entries.sort((a, b) {
+          if (a['is_dir'] != b['is_dir']) {
+            return (b['is_dir'] as bool) ? 1 : -1;
+          }
+          return (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase());
+        });
+
+        client.socket.add(jsonEncode({
+          'type': 'fs_list_resp',
+          'id': id,
+          'path': dir.path,
+          'entries': entries,
+        }));
+      } else if (type == 'fs_read_chunk') {
+        final path = json['path']?.toString() ?? '';
+        final offset = (json['offset'] as num?)?.toInt() ?? 0;
+        final length = (json['length'] as num?)?.toInt() ?? 65536;
+
+        final file = File(path);
+        if (!file.existsSync()) {
+          client.socket.add(jsonEncode({
+            'type': 'fs_error',
+            'id': id,
+            'error': 'File does not exist: $path',
+          }));
+          return;
+        }
+
+        final totalSize = file.lengthSync();
+        if (offset >= totalSize) {
+          client.socket.add(jsonEncode({
+            'type': 'fs_read_resp',
+            'id': id,
+            'path': path,
+            'offset': offset,
+            'total_size': totalSize,
+            'eof': true,
+            'data_b64': '',
+          }));
+          return;
+        }
+
+        final raf = file.openSync(mode: FileMode.read);
+        raf.setPositionSync(offset);
+        final bytes = raf.readSync(length);
+        raf.closeSync();
+
+        final eof = (offset + bytes.length) >= totalSize;
+        client.socket.add(jsonEncode({
+          'type': 'fs_read_resp',
+          'id': id,
+          'path': path,
+          'offset': offset,
+          'total_size': totalSize,
+          'eof': eof,
+          'data_b64': base64Encode(bytes),
+        }));
+      } else if (type == 'fs_write_chunk') {
+        final path = json['path']?.toString() ?? '';
+        final offset = (json['offset'] as num?)?.toInt() ?? 0;
+        final dataB64 = json['data_b64']?.toString() ?? '';
+        final eof = json['eof'] == true;
+
+        final bytes = base64Decode(dataB64);
+        final file = File(path);
+        if (!file.parent.existsSync()) {
+          file.parent.createSync(recursive: true);
+        }
+
+        final raf = file.openSync(mode: offset == 0 ? FileMode.write : FileMode.append);
+        if (offset > 0) {
+          raf.setPositionSync(offset);
+        }
+        raf.writeFromSync(bytes);
+        raf.closeSync();
+
+        client.socket.add(jsonEncode({
+          'type': 'fs_write_resp',
+          'id': id,
+          'path': path,
+          'bytes_written': bytes.length,
+          'eof': eof,
+          'success': true,
+        }));
+      } else if (type == 'fs_mkdir') {
+        final path = json['path']?.toString() ?? '';
+        Directory(path).createSync(recursive: true);
+        client.socket.add(jsonEncode({
+          'type': 'fs_action_resp',
+          'id': id,
+          'action': 'mkdir',
+          'success': true,
+        }));
+      } else if (type == 'fs_delete') {
+        final path = json['path']?.toString() ?? '';
+        final isDir = json['is_dir'] == true;
+        if (isDir) {
+          Directory(path).deleteSync(recursive: true);
+        } else {
+          File(path).deleteSync();
+        }
+        client.socket.add(jsonEncode({
+          'type': 'fs_action_resp',
+          'id': id,
+          'action': 'delete',
+          'success': true,
+        }));
+      }
+    } catch (e) {
+      client.socket.add(jsonEncode({
+        'type': 'fs_error',
+        'id': id,
+        'error': e.toString(),
+      }));
     }
   }
 

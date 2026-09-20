@@ -9,6 +9,8 @@ import '../services/e2ee_transport.dart';
 import '../widgets/pin_dialog.dart';
 import '../widgets/shortcut_bar.dart';
 import '../services/unattended_storage.dart';
+import '../services/file_transfer_service.dart';
+import 'file_manager_view.dart';
 
 typedef WebSocketConnector = Future<WebSocket> Function(String url);
 
@@ -50,6 +52,7 @@ class _MirrorViewState extends State<MirrorView> {
   int _frameCount = 0;
   String _videoCodecName = 'Detecting...';
   BuildContext? _dialogContext;
+  final _fileMessageStreamController = StreamController<dynamic>.broadcast();
 
   final TextEditingController _textController = TextEditingController();
   final FocusNode _keyboardFocusNode = FocusNode();
@@ -442,6 +445,8 @@ class _MirrorViewState extends State<MirrorView> {
               _showPinDialog();
             }
           }
+        } else if (type != null && type.startsWith('fs_')) {
+          _fileMessageStreamController.add(message);
         } else if (type == 'clipboard_sync' && json['text'] is String) {
           final text = json['text'] as String;
           _lastRemoteClipboard = text;
@@ -763,6 +768,27 @@ class _MirrorViewState extends State<MirrorView> {
     );
   }
 
+  void _openFileManager() {
+    if (_socket == null) return;
+    final ftService = FileTransferService(
+      incomingStream: _fileMessageStreamController.stream,
+      sendMessage: (msg) {
+        if (_socket != null) {
+          _socket!.add(msg);
+        }
+      },
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FileManagerView(
+          service: ftService,
+          remoteHostName: widget.targetDeviceId ?? widget.hostIp ?? 'Host PC',
+        ),
+      ),
+    );
+  }
+
   Widget _buildQualityOption(String title, String profile, BuildContext sheetContext) {
     final isSelected = _currentQuality.toLowerCase().contains(profile);
     return ListTile(
@@ -790,6 +816,7 @@ class _MirrorViewState extends State<MirrorView> {
     _watchdogTimer?.cancel();
     _reconnectTimer?.cancel();
     _clipboardPollingTimer?.cancel();
+    _fileMessageStreamController.close();
     _socket?.close();
     _audioPlayer.stop();
     _videoPlayer.dispose();
@@ -1201,6 +1228,13 @@ class _MirrorViewState extends State<MirrorView> {
                                 : 'Clipboard Sync Paused (Tap: Paste, Long Press: Toggle)',
                             onPressed: _pasteToPc,
                             onLongPress: _toggleAutoClipboardSync,
+                          ),
+                          const SizedBox(width: 2),
+                          IconButton(
+                            key: const Key('file_manager_button'),
+                            icon: const Icon(Icons.folder_shared, color: Colors.amberAccent),
+                            tooltip: 'File Transfer Manager',
+                            onPressed: _openFileManager,
                           ),
                         ],
                       ),

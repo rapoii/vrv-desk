@@ -14,7 +14,7 @@
 | **Video Codecs** | Hardware H.264 (MFT) | VP8, VP9, AV1, H.264 | DeskRT, H.264/H.265 | Proprietary H.264 | H.264, HEVC, AV1 |
 | **Audio Streaming** | WASAPI + Android 10+ Internal 48kHz Opus | WASAPI Loopback (PC Only) | WASAPI Loopback (PC Only) | Virtual Audio (PC Only) | Virtual Sink Loopback (PC Only) |
 | **Bi-directional Clipboard** | ✅ **Ada (Auto Sync & Echo-Free)** | ✅ Ada (Teks & File) | ✅ Ada | ✅ Ada | ✅ Ada (Teks) |
-| **File Transfer Manager** | ❌ *Belum Ada* | ✅ Ada (Dedicated UI) | ✅ Ada (Dual Panel) | ✅ Ada (Dual Panel) | ❌ Tidak Ada (Hanya P2P) |
+| **File Transfer Manager** | ✅ **Ada (Dual Panel & Chunk Streaming)** | ✅ Ada (Dedicated UI) | ✅ Ada (Dual Panel) | ✅ Ada (Dual Panel) | ❌ Tidak Ada (Hanya P2P) |
 | **Unattended Access** | ✅ **Ada (Permanent Password + Salt & Dual Auth)** | ✅ Password Tetap + 2FA | ✅ Password Tetap + 2FA | ✅ Whitelist + Security | ✅ Akun Permanen |
 | **Multi-Monitor Switcher** | ❌ Primary Screen Saja | ✅ Multi-Display Switch | ✅ Multi-Tab Display | ✅ Multi-Monitor Switch | ✅ Virtual / Phys Switch |
 | **UAC Elevation & Service** | ❌ User Session Saja | ✅ Windows Service | ✅ Windows Service | ✅ Windows Service | ✅ System Service |
@@ -90,10 +90,13 @@
 - [x] Penyimpanan lokal password per Device ID (`unattended_storage.dart`) dan auto-reconnect di `home_view.dart` & `mirror_view.dart`.
 - [x] Verifikasi pengujian: 136/136 tests passing (58 Rust + 78 Flutter) + Live Python E2E (`test_e2e_unattended.py`).
 
-### Phase 21: Dedicated File Transfer Manager
-- [ ] Rancang protokol chunking file `FrameType::FileChunk = 0x06` (`VFIL`) dengan checksum Blake3/SHA256.
-- [ ] Buat RPC untuk listing folder (`ListDir`, `DownloadFile`, `UploadFile`, `CancelTransfer`).
-- [ ] Buat antarmuka dual-pane File Manager pada Flutter viewer dan Win32 GUI.
+### Phase 21: Dedicated File Transfer Manager - [x] **Completed & Verified**
+- [x] Rancang protokol chunking file (`fs_list`, `fs_read_chunk`, `fs_write_chunk`, `fs_mkdir`, `fs_delete`) dengan streaming 64 KB chunk & RFC4648 Base64 pada `rust/src/file_manager.rs`.
+- [x] Operasi remote filesystem lengkap: root drive listing Windows (`C:\`, `D:\`, dll), navigasi folder, upload, download, pembuatan folder, dan penghapusan item.
+- [x] Dual-panel File Manager di Flutter (`lib/src/views/file_manager_view.dart`) dengan responsive layout (side-by-side pada Desktop/Tablet, tab-switch pada Mobile).
+- [x] Tombol akses File Manager terintegrasi pada floating dock viewer (`lib/src/views/mirror_view.dart`).
+- [x] Dukungan penuh filesystem transfer pada Android Host mode (`lib/src/services/android_host_service.dart`).
+- [x] Verifikasi live E2E Python (`test_e2e_file_transfer.py`) dan test suites (145/145 passing: 62 Rust + 83 Flutter).
 
 ### Phase 22: Windows Service Daemon & UAC Elevation
 - [ ] Buat binary service mandiri `vrv_service.exe` yang mendaftar ke Windows Service Control Manager (`CreateServiceW`).

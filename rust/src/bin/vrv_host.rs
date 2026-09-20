@@ -46,6 +46,16 @@ enum ClientInput {
     Shortcut { name: String },
     #[serde(rename = "clipboard_text")]
     ClipboardText { text: String },
+    #[serde(rename = "fs_list")]
+    FsList { id: String, path: Option<String> },
+    #[serde(rename = "fs_read_chunk")]
+    FsReadChunk { id: String, path: String, offset: u64, length: Option<usize> },
+    #[serde(rename = "fs_write_chunk")]
+    FsWriteChunk { id: String, path: String, offset: u64, data_b64: String, eof: bool },
+    #[serde(rename = "fs_mkdir")]
+    FsMkdir { id: String, path: String },
+    #[serde(rename = "fs_delete")]
+    FsDelete { id: String, path: String, is_dir: bool },
 }
 
 fn parse_cli_args() -> (Option<String>, Option<String>, Option<String>) {
@@ -507,6 +517,7 @@ where
     // 3. Task: Receive and inject input events
     let is_running_input = is_running.clone();
     let last_synced_input = last_synced_clipboard.clone();
+    let ws_sender_input = ws_sender.clone();
     let input_task = tokio::spawn(async move {
         while let Some(msg) = ws_receiver.next().await {
             if !is_running_input.load(std::sync::atomic::Ordering::Relaxed) {
@@ -625,6 +636,89 @@ where
                                     *synced = Some(text.clone());
                                 }
                                 set_clipboard_text(&text);
+                            }
+                            ClientInput::FsList { id, path } => {
+                                let p = path.unwrap_or_default();
+                                let resp = match mirror_core::file_manager::FileManager::list_directory(&p) {
+                                    Ok((canonical_path, entries)) => serde_json::to_string(&mirror_core::file_manager::FsListResponse {
+                                        msg_type: "fs_list_resp".to_string(),
+                                        id,
+                                        path: canonical_path,
+                                        entries,
+                                    }).unwrap(),
+                                    Err(e) => serde_json::to_string(&mirror_core::file_manager::FsErrorResponse {
+                                        msg_type: "fs_error".to_string(),
+                                        id,
+                                        error: e,
+                                    }).unwrap(),
+                                };
+                                let mut sender = ws_sender_input.lock().await;
+                                let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;
+                            }
+                            ClientInput::FsReadChunk { id, path, offset, length } => {
+                                let len = length.unwrap_or(65536);
+                                let resp = match mirror_core::file_manager::FileManager::read_chunk(&path, offset, len) {
+                                    Ok(mut r) => {
+                                        r.id = id;
+                                        serde_json::to_string(&r).unwrap()
+                                    }
+                                    Err(e) => serde_json::to_string(&mirror_core::file_manager::FsErrorResponse {
+                                        msg_type: "fs_error".to_string(),
+                                        id,
+                                        error: e,
+                                    }).unwrap(),
+                                };
+                                let mut sender = ws_sender_input.lock().await;
+                                let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;
+                            }
+                            ClientInput::FsWriteChunk { id, path, offset, data_b64, eof } => {
+                                let resp = match mirror_core::file_manager::FileManager::write_chunk(&path, offset, &data_b64, eof) {
+                                    Ok(mut r) => {
+                                        r.id = id;
+                                        serde_json::to_string(&r).unwrap()
+                                    }
+                                    Err(e) => serde_json::to_string(&mirror_core::file_manager::FsErrorResponse {
+                                        msg_type: "fs_error".to_string(),
+                                        id,
+                                        error: e,
+                                    }).unwrap(),
+                                };
+                                let mut sender = ws_sender_input.lock().await;
+                                let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;
+                            }
+                            ClientInput::FsMkdir { id, path } => {
+                                let resp = match mirror_core::file_manager::FileManager::create_dir(&path) {
+                                    Ok(_) => serde_json::to_string(&mirror_core::file_manager::FsActionResponse {
+                                        msg_type: "fs_action_resp".to_string(),
+                                        id,
+                                        action: "mkdir".to_string(),
+                                        success: true,
+                                    }).unwrap(),
+                                    Err(e) => serde_json::to_string(&mirror_core::file_manager::FsErrorResponse {
+                                        msg_type: "fs_error".to_string(),
+                                        id,
+                                        error: e,
+                                    }).unwrap(),
+                                };
+                                let mut sender = ws_sender_input.lock().await;
+                                let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;
+                            }
+                            ClientInput::FsDelete { id, path, is_dir } => {
+                                let resp = match mirror_core::file_manager::FileManager::delete_item(&path, is_dir) {
+                                    Ok(_) => serde_json::to_string(&mirror_core::file_manager::FsActionResponse {
+                                        msg_type: "fs_action_resp".to_string(),
+                                        id,
+                                        action: "delete".to_string(),
+                                        success: true,
+                                    }).unwrap(),
+                                    Err(e) => serde_json::to_string(&mirror_core::file_manager::FsErrorResponse {
+                                        msg_type: "fs_error".to_string(),
+                                        id,
+                                        error: e,
+                                    }).unwrap(),
+                                };
+                                let mut sender = ws_sender_input.lock().await;
+                                let _ = sender.send(tokio_tungstenite::tungstenite::Message::Text(resp.into())).await;
                             }
                         }
                     } else {

@@ -13,6 +13,7 @@ pub mod stun;
 pub mod dirty_rect;
 pub mod host_service;
 pub mod unattended;
+pub mod file_manager;
 
 pub use platform::windows_capture::{DxgiCapturer, HybridScreenCapturer};
 
