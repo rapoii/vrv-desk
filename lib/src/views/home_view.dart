@@ -4,6 +4,9 @@ import 'package:flutter/services.dart';
 import '../models/device.dart';
 import '../services/lan_discovery_service.dart';
 import '../widgets/pin_dialog.dart';
+import '../widgets/qr_code_dialog.dart';
+import '../services/qr_pairing_service.dart';
+import 'qr_scanner_view.dart';
 import 'mirror_view.dart';
 
 class HomeView extends StatefulWidget {
@@ -80,6 +83,50 @@ class _HomeViewState extends State<HomeView> {
         duration: Duration(seconds: 2),
       ),
     );
+  }
+
+  void _showMyQrCode() {
+    showDialog(
+      context: context,
+      builder: (_) => QrCodeDialog(
+        pairingData: QrPairingData(
+          deviceId: widget.myDeviceId,
+          signalingUrl: widget.signalingUrl,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openQrScanner() async {
+    final result = await Navigator.of(context).push<QrPairingData>(
+      MaterialPageRoute(
+        builder: (_) => const QrScannerView(),
+      ),
+    );
+
+    if (result != null && mounted) {
+      if (result.ipAddress != null && result.ipAddress!.isNotEmpty) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => MirrorView(
+              hostIp: result.ipAddress,
+              port: result.port,
+              initialPin: result.pin,
+            ),
+          ),
+        );
+      } else if (result.deviceId.isNotEmpty) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => MirrorView(
+              signalingUrl: result.signalingUrl ?? widget.signalingUrl,
+              targetDeviceId: result.deviceId,
+              initialPin: result.pin,
+            ),
+          ),
+        );
+      }
+    }
   }
 
   void _showPinDialog(DiscoveredDevice device) {
@@ -205,6 +252,12 @@ class _HomeViewState extends State<HomeView> {
         title: const Text('Mirror & Remote Control'),
         actions: [
           IconButton(
+            key: const Key('scan_qr_appbar_button'),
+            icon: const Icon(Icons.qr_code_scanner),
+            tooltip: 'Scan QR Code',
+            onPressed: _openQrScanner,
+          ),
+          IconButton(
             key: const Key('direct_connect_button'),
             icon: const Icon(Icons.cast),
             tooltip: 'Connect to Host IP',
@@ -246,11 +299,23 @@ class _HomeViewState extends State<HomeView> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      key: const Key('copy_device_id_button'),
-                      onPressed: _copyDeviceId,
-                      icon: Icon(_isCopied ? Icons.check : Icons.copy),
-                      label: Text(_isCopied ? 'Copied' : 'Copy ID'),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ElevatedButton.icon(
+                          key: const Key('copy_device_id_button'),
+                          onPressed: _copyDeviceId,
+                          icon: Icon(_isCopied ? Icons.check : Icons.copy),
+                          label: Text(_isCopied ? 'Copied' : 'Copy ID'),
+                        ),
+                        const SizedBox(width: 12),
+                        OutlinedButton.icon(
+                          key: const Key('show_qr_button'),
+                          onPressed: _showMyQrCode,
+                          icon: const Icon(Icons.qr_code_2),
+                          label: const Text('Show QR'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -301,13 +366,26 @@ class _HomeViewState extends State<HomeView> {
                       keyboardType: TextInputType.text,
                     ),
                     const SizedBox(height: 10),
-                    ElevatedButton.icon(
-                      key: const Key('quick_connect_button'),
-                      onPressed: () {
-                        _handleConnectInput(_quickConnectController.text, '');
-                      },
-                      icon: const Icon(Icons.arrow_forward),
-                      label: const Text('Connect to Device'),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            key: const Key('quick_connect_button'),
+                            onPressed: () {
+                              _handleConnectInput(_quickConnectController.text, '');
+                            },
+                            icon: const Icon(Icons.arrow_forward),
+                            label: const Text('Connect to Device'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton.filledTonal(
+                          key: const Key('scan_qr_quick_button'),
+                          tooltip: 'Scan QR Code',
+                          icon: const Icon(Icons.qr_code_scanner),
+                          onPressed: _openQrScanner,
+                        ),
+                      ],
                     ),
                   ],
                 ),
