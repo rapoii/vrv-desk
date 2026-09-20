@@ -593,5 +593,99 @@ void main() {
 
       await ws.close();
     });
+
+    test('Clipboard: handles incoming clipboard_text and updates device clipboard', () async {
+      String? mockClipboard;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (MethodCall methodCall) async {
+        if (methodCall.method == 'Clipboard.setData') {
+          mockClipboard = (methodCall.arguments as Map)['text'] as String?;
+          return null;
+        } else if (methodCall.method == 'Clipboard.getData') {
+          return <String, dynamic>{'text': mockClipboard};
+        }
+        return null;
+      });
+
+      const pin = '654321';
+      await hostService.start(
+        bindAddress: InternetAddress.loopbackIPv4,
+        port: 0,
+        pin: pin,
+        enableUdpBeacon: false,
+      );
+
+      final ws = await WebSocket.connect('ws://127.0.0.1:${hostService.port}');
+      final msgCompleter = Completer<String>();
+
+      ws.listen((data) {
+        if (data is String) {
+          final json = jsonDecode(data);
+          if (json['type'] == 'auth_required') {
+            ws.add(jsonEncode({'type': 'auth_verify', 'pin': pin, 'e2ee': false}));
+          } else if (json['type'] == 'auth_ok') {
+            msgCompleter.complete('auth_ok');
+          }
+        }
+      });
+
+      await msgCompleter.future.timeout(const Duration(seconds: 2));
+
+      // Send clipboard_text
+      const testText = 'Hello from remote clipboard!';
+      ws.add(jsonEncode({
+        'type': 'clipboard_text',
+        'text': testText,
+      }));
+
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      expect(mockClipboard, equals(testText));
+
+      await ws.close();
+    });
+
+    test('Clipboard: broadcasts clipboard_sync when local clipboard changes', () async {
+      String? mockClipboard = 'Initial local clipboard';
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (MethodCall methodCall) async {
+        if (methodCall.method == 'Clipboard.setData') {
+          mockClipboard = (methodCall.arguments as Map)['text'] as String?;
+          return null;
+        } else if (methodCall.method == 'Clipboard.getData') {
+          return <String, dynamic>{'text': mockClipboard};
+        }
+        return null;
+      });
+
+      const pin = '654321';
+      await hostService.start(
+        bindAddress: InternetAddress.loopbackIPv4,
+        port: 0,
+        pin: pin,
+        enableUdpBeacon: false,
+      );
+
+      final ws = await WebSocket.connect('ws://127.0.0.1:${hostService.port}');
+      final syncCompleter = Completer<String>();
+
+      ws.listen((data) {
+        if (data is String) {
+          final json = jsonDecode(data);
+          if (json['type'] == 'auth_required') {
+            ws.add(jsonEncode({'type': 'auth_verify', 'pin': pin, 'e2ee': false}));
+          } else if (json['type'] == 'clipboard_sync') {
+            if (!syncCompleter.isCompleted) {
+              syncCompleter.complete(json['text'] as String);
+            }
+          }
+        }
+      });
+
+      final receivedText = await syncCompleter.future.timeout(const Duration(seconds: 3));
+      expect(receivedText, equals('Initial local clipboard'));
+
+      await ws.close();
+    });
   });
 }

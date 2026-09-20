@@ -50,6 +50,8 @@ class AndroidHostService {
   RawDatagramSocket? _udpSocket;
   Timer? _beaconTimer;
   StreamSubscription? _videoSubscription;
+  Timer? _clipboardTimer;
+  String? _lastSentClipboard;
 
   final Set<_HostClient> _clients = {};
 
@@ -129,12 +131,19 @@ class AndroidHostService {
     if (enableUdpBeacon) {
       await _startUdpBeacon();
     }
+
+    // Start Bi-directional Clipboard sync monitor
+    _startClipboardMonitoring();
   }
 
   /// Stops the Android Host service.
   Future<void> stop() async {
     if (!_isRunning) return;
     _isRunning = false;
+
+    // Stop clipboard monitoring
+    _clipboardTimer?.cancel();
+    _clipboardTimer = null;
 
     // Stop UDP beacon
     _beaconTimer?.cancel();
@@ -382,8 +391,51 @@ class AndroidHostService {
         }
         break;
 
+      case 'clipboard_text':
+        final clipText = json['text']?.toString() ?? '';
+        if (clipText.isNotEmpty) {
+          _lastSentClipboard = clipText;
+          Clipboard.setData(ClipboardData(text: clipText));
+        }
+        break;
+
       default:
         break;
+    }
+  }
+
+  void _startClipboardMonitoring() {
+    _clipboardTimer?.cancel();
+    _clipboardTimer = Timer.periodic(const Duration(milliseconds: 750), (timer) async {
+      if (!_isRunning) {
+        timer.cancel();
+        return;
+      }
+      final authenticatedClients = _clients.where((c) => c.isAuthenticated).toList();
+      if (authenticatedClients.isEmpty) return;
+
+      try {
+        final data = await Clipboard.getData(Clipboard.kTextPlain);
+        final currentText = data?.text;
+        if (currentText != null &&
+            currentText.isNotEmpty &&
+            currentText != _lastSentClipboard) {
+          _lastSentClipboard = currentText;
+          _broadcastClipboardSync(currentText);
+        }
+      } catch (_) {}
+    });
+  }
+
+  void _broadcastClipboardSync(String text) {
+    final payload = jsonEncode({
+      'type': 'clipboard_sync',
+      'text': text,
+    });
+    for (final client in _clients.where((c) => c.isAuthenticated)) {
+      try {
+        client.socket.add(payload);
+      } catch (_) {}
     }
   }
 

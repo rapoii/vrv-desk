@@ -79,6 +79,12 @@ class _MirrorViewState extends State<MirrorView> {
   Timer? _watchdogTimer;
   Timer? _reconnectTimer;
 
+  // Bi-directional Clipboard Sync
+  bool _autoClipboardSync = true;
+  String? _lastLocalClipboard;
+  String? _lastRemoteClipboard;
+  Timer? _clipboardPollingTimer;
+
   late final AudioStreamPlayer _audioPlayer;
   late final VideoStreamPlayer _videoPlayer;
   E2eeTransportSession? _e2eeSession;
@@ -368,6 +374,7 @@ class _MirrorViewState extends State<MirrorView> {
           }
           _lastPacketTime = DateTime.now();
           _startNetworkWatchdog();
+          _startClipboardSync();
           setState(() {
             _isAuthenticated = true;
             _isAuthenticating = false;
@@ -428,13 +435,15 @@ class _MirrorViewState extends State<MirrorView> {
           }
         } else if (type == 'clipboard_sync' && json['text'] is String) {
           final text = json['text'] as String;
+          _lastRemoteClipboard = text;
+          _lastLocalClipboard = text;
           await Clipboard.setData(ClipboardData(text: text));
           if (mounted) {
             final preview = text.length > 30 ? '${text.substring(0, 30)}...' : text;
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('📋 Copied from PC: $preview'),
+                content: Text('📋 Copied from Host: $preview'),
                 duration: const Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
               ),
@@ -445,10 +454,37 @@ class _MirrorViewState extends State<MirrorView> {
     } catch (_) {}
   }
 
+  void _startClipboardSync() {
+    _clipboardPollingTimer?.cancel();
+    if (!_autoClipboardSync) return;
+    _clipboardPollingTimer = Timer.periodic(const Duration(milliseconds: 750), (timer) async {
+      if (!mounted || !_isAuthenticated) {
+        timer.cancel();
+        return;
+      }
+      if (!_autoClipboardSync) return;
+      try {
+        final data = await Clipboard.getData(Clipboard.kTextPlain);
+        final currentText = data?.text;
+        if (currentText != null &&
+            currentText.isNotEmpty &&
+            currentText != _lastLocalClipboard &&
+            currentText != _lastRemoteClipboard) {
+          _lastLocalClipboard = currentText;
+          _sendInput({
+            'type': 'clipboard_text',
+            'text': currentText,
+          });
+        }
+      } catch (_) {}
+    });
+  }
+
   Future<void> _pasteToPc() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text;
     if (text != null && text.isNotEmpty) {
+      _lastLocalClipboard = text;
       _sendInput({
         'type': 'clipboard_text',
         'text': text,
@@ -458,7 +494,7 @@ class _MirrorViewState extends State<MirrorView> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('📋 Pasted to PC: $preview'),
+            content: Text('📋 Pasted to Host: $preview'),
             duration: const Duration(seconds: 2),
             behavior: SnackBarBehavior.floating,
           ),
@@ -474,6 +510,29 @@ class _MirrorViewState extends State<MirrorView> {
           ),
         );
       }
+    }
+  }
+
+  void _toggleAutoClipboardSync() {
+    setState(() {
+      _autoClipboardSync = !_autoClipboardSync;
+    });
+    if (_autoClipboardSync) {
+      _startClipboardSync();
+    } else {
+      _clipboardPollingTimer?.cancel();
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_autoClipboardSync
+              ? '📋 Auto Clipboard Sync Enabled'
+              : '📋 Auto Clipboard Sync Disabled'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -721,6 +780,7 @@ class _MirrorViewState extends State<MirrorView> {
     _metricsWindowTimer?.cancel();
     _watchdogTimer?.cancel();
     _reconnectTimer?.cancel();
+    _clipboardPollingTimer?.cancel();
     _socket?.close();
     _audioPlayer.stop();
     _videoPlayer.dispose();
@@ -1109,12 +1169,29 @@ class _MirrorViewState extends State<MirrorView> {
                           ),
                           const SizedBox(width: 2),
                           IconButton(
-                            icon: const Icon(
-                              Icons.content_paste,
-                              color: Colors.white,
+                            icon: Stack(
+                              alignment: Alignment.bottomRight,
+                              children: [
+                                Icon(
+                                  Icons.content_paste,
+                                  color: _autoClipboardSync ? Colors.cyanAccent : Colors.white60,
+                                ),
+                                if (_autoClipboardSync)
+                                  Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.greenAccent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                              ],
                             ),
-                            tooltip: 'Paste Phone Clipboard to PC',
+                            tooltip: _autoClipboardSync
+                                ? 'Auto Clipboard Sync Active (Tap: Paste, Long Press: Toggle)'
+                                : 'Clipboard Sync Paused (Tap: Paste, Long Press: Toggle)',
                             onPressed: _pasteToPc,
+                            onLongPress: _toggleAutoClipboardSync,
                           ),
                         ],
                       ),

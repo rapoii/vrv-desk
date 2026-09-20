@@ -415,8 +415,11 @@ where
         }
     });
 
+    let last_synced_clipboard = Arc::new(tokio::sync::Mutex::new(None::<String>));
+
     let is_running_clip = is_running.clone();
     let ws_sender_clip = ws_sender.clone();
+    let last_synced_clip = last_synced_clipboard.clone();
     let clipboard_task = tokio::spawn(async move {
         let mut last_seq = get_clipboard_sequence_number();
         let mut interval = tokio::time::interval(Duration::from_millis(500));
@@ -426,6 +429,13 @@ where
             if current_seq != last_seq {
                 last_seq = current_seq;
                 if let Some(text) = get_clipboard_text() {
+                    let mut synced = last_synced_clip.lock().await;
+                    if synced.as_ref() == Some(&text) {
+                        continue;
+                    }
+                    *synced = Some(text.clone());
+                    drop(synced);
+
                     let sync_msg = serde_json::json!({
                         "type": "clipboard_sync",
                         "text": text
@@ -469,6 +479,7 @@ where
     });
 
     let is_running_input = is_running.clone();
+    let last_synced_input = last_synced_clipboard.clone();
     let input_task = tokio::spawn(async move {
         while let Some(msg) = ws_receiver.next().await {
             if !is_running_input.load(Ordering::Relaxed) {
@@ -542,6 +553,10 @@ where
                             let _ = inject_shortcut(&name);
                         }
                         ClientInput::ClipboardText { text } => {
+                            {
+                                let mut synced = last_synced_input.lock().await;
+                                *synced = Some(text.clone());
+                            }
                             set_clipboard_text(&text);
                         }
                     }

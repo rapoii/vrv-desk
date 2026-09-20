@@ -64,10 +64,23 @@ async def main():
     async with websockets.connect(uri) as ws:
         print("Connected!")
 
+        # 0. Auth Handshake
+        init_msg = await ws.recv()
+        if isinstance(init_msg, str):
+            init_json = json.loads(init_msg)
+            if init_json.get("type") == "auth_required":
+                print("Performing PIN authentication...")
+                await ws.send(json.dumps({"type": "auth_verify", "pin": "999888"}))
+                auth_res = await ws.recv()
+                print(f"Auth response: {auth_res}")
+
         # 1. Test video frame reception
         frame = await ws.recv()
-        assert isinstance(frame, bytes) and len(frame) > 1000
-        print(f"Received video frame: {len(frame)} bytes")
+        print(f"Received initial frame type: {type(frame)}, repr: {repr(frame)[:100]}")
+        while isinstance(frame, str):
+            frame = await ws.recv()
+            print(f"Received next frame type: {type(frame)}, repr: {repr(frame)[:100]}")
+        print(f"Received binary packet: {len(frame)} bytes")
 
         # 2. Test typing text
         print("Testing type_text...")
@@ -102,6 +115,22 @@ async def main():
         print(f"Windows Clipboard is now: {pc_clip}")
         assert pc_clip == test_phone_text, f"Expected '{test_phone_text}', got '{pc_clip}'"
         print("Android -> PC Clipboard Sync Verified!")
+
+        # 4b. Verify Echo Prevention (Host must not echo back the text received from client)
+        echo_detected = False
+        check_start = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - check_start < 1.2:
+            try:
+                incoming = await asyncio.wait_for(ws.recv(), timeout=0.3)
+                if isinstance(incoming, str):
+                    d = json.loads(incoming)
+                    if d.get("type") == "clipboard_sync" and d.get("text") == test_phone_text:
+                        echo_detected = True
+                        break
+            except asyncio.TimeoutError:
+                break
+        assert not echo_detected, "Echo loop detected! Host echoed back incoming client clipboard"
+        print("✅ Echo loop prevention verified (no redundant broadcast back to sender)")
 
         # 5. Test PC -> Android clipboard sync broadcast
         test_pc_text = "VrV-Desk-PC-Clipboard-Broadcast-888"

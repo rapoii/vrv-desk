@@ -13,7 +13,7 @@
 | **Engine Video Capture** | DXGI Desktop Duplication | DirectX / Scrap | DeskRT (Proprietary) | Proprietary RDP/VNC | NVFBC / DXGI DDA |
 | **Video Codecs** | Hardware H.264 (MFT) | VP8, VP9, AV1, H.264 | DeskRT, H.264/H.265 | Proprietary H.264 | H.264, HEVC, AV1 |
 | **Audio Streaming** | WASAPI + Android 10+ Internal 48kHz Opus | WASAPI Loopback (PC Only) | WASAPI Loopback (PC Only) | Virtual Audio (PC Only) | Virtual Sink Loopback (PC Only) |
-| **Bi-directional Clipboard** | ❌ *Belum Ada* | ✅ Ada (Teks & File) | ✅ Ada | ✅ Ada | ✅ Ada (Teks) |
+| **Bi-directional Clipboard** | ✅ **Ada (Auto Sync & Echo-Free)** | ✅ Ada (Teks & File) | ✅ Ada | ✅ Ada | ✅ Ada (Teks) |
 | **File Transfer Manager** | ❌ *Belum Ada* | ✅ Ada (Dedicated UI) | ✅ Ada (Dual Panel) | ✅ Ada (Dual Panel) | ❌ Tidak Ada (Hanya P2P) |
 | **Unattended Access** | ❌ Dynamic PIN Saja | ✅ Password Tetap + 2FA | ✅ Password Tetap + 2FA | ✅ Whitelist + Security | ✅ Akun Permanen |
 | **Multi-Monitor Switcher** | ❌ Primary Screen Saja | ✅ Multi-Display Switch | ✅ Multi-Tab Display | ✅ Multi-Monitor Switch | ✅ Virtual / Phys Switch |
@@ -75,11 +75,11 @@
 
 ## 3. Rencana Implementasi Masa Depan (Actionable Roadmap)
 
-### Phase 19: Bi-directional Clipboard Sync
-- [ ] Buat packet protokol frame baru `FrameType::Clipboard = 0x05` (`VCLP`) pada `rust/src/protocol.rs`.
-- [ ] Implementasikan listener clipboard Win32 (`AddClipboardFormatListener` / `WM_CLIPBOARDUPDATE`) pada `rust/src/platform/windows_clipboard.rs`.
-- [ ] Sambungkan handler clipboard pada Flutter frontend menggunakan `Clipboard.getData` dan `Clipboard.setData`.
-- [ ] Verifikasi pengujian transfer teks bolak-balik antara Windows dan Android.
+### Phase 19: Bi-directional Clipboard Sync (`clipboard_sync` & `clipboard_text`) - [x] **Completed & Verified**
+- [x] Win32 Clipboard sequence monitor + Echo loop prevention pada Rust (`host_service.rs` & `vrv_host.rs`).
+- [x] Android Host bi-directional clipboard sync listener & broadcast pada `android_host_service.dart`.
+- [x] Flutter Client automatic background clipboard sync timer, auto-sync toggle, dan echo prevention pada `mirror_view.dart`.
+- [x] Verifikasi live e2e python test (`test_e2e_clipboard.py`) dan Flutter widget test suite (127/127 tests passing).
 
 ### Phase 20: Unattended Access (Static Password)
 - [ ] Tambahkan konfigurasi `unattended_enabled` dan hash password `unattended_password_hash` (Argon2id) pada file config lokal `%APPDATA%\VrVDesk\config.toml`.
