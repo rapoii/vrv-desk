@@ -37,7 +37,7 @@ void main() {
       expect(lastShortcut, 'esc');
 
       // Tap BKSP
-      await tester.tap(find.text('⌫'));
+      await tester.tap(find.byKey(const Key('keyboard_key_backspace')));
       await tester.pump();
       expect(lastShortcut, 'backspace');
 
@@ -205,7 +205,7 @@ void main() {
       expect(lastShortcut, 'home');
 
       // Switch back to QWERTY
-      await tester.tap(find.text('⌨ QWERTY Layout'));
+      await tester.tap(find.text('QWERTY Layout'));
       await tester.pump();
 
       expect(find.text('q'), findsOneWidget);

@@ -417,7 +417,7 @@ class _MirrorViewState extends State<MirrorView> {
             _authError = null;
             _isE2eeActive = _e2eeSession != null;
             _statusMessage = _isE2eeActive
-                ? 'Connected (🔒 E2EE Encrypted)'
+                ? 'Connected (E2EE Encrypted)'
                 : 'Connected & Authenticated';
           });
           if (mounted) {
@@ -426,7 +426,7 @@ class _MirrorViewState extends State<MirrorView> {
               SnackBar(
                 content: Text(
                   _isE2eeActive
-                      ? 'Connected & Authenticated (🔒 E2EE Encrypted)'
+                      ? 'Connected & Authenticated (E2EE Encrypted)'
                       : 'Connected & Authenticated with Host PC',
                 ),
                 duration: const Duration(seconds: 2),
@@ -484,8 +484,8 @@ class _MirrorViewState extends State<MirrorView> {
               SnackBar(
                 content: Text(
                   success
-                      ? '⚡ Sent Ctrl+Alt+Del (SAS) to remote host'
-                      : '⚠️ Failed to trigger Ctrl+Alt+Del on host',
+                      ? 'Sent Ctrl+Alt+Del (SAS) to remote host'
+                      : 'Failed to trigger Ctrl+Alt+Del on host',
                 ),
                 backgroundColor: success ? Colors.green : Colors.orange,
                 duration: const Duration(seconds: 2),
@@ -500,8 +500,8 @@ class _MirrorViewState extends State<MirrorView> {
               SnackBar(
                 content: Text(
                   success
-                      ? '🛡️ Host Administrator elevation requested'
-                      : '⚠️ Host elevation request failed',
+                      ? 'Host Administrator elevation requested'
+                      : 'Host elevation request failed',
                 ),
                 backgroundColor: success ? Colors.blueAccent : Colors.redAccent,
                 duration: const Duration(seconds: 3),
@@ -522,8 +522,8 @@ class _MirrorViewState extends State<MirrorView> {
               SnackBar(
                 content: Text(
                   success
-                      ? '🖥️ Switched to Display ${idx + 1} ($w x $h)'
-                      : '⚠️ Failed to switch display: ${json['error']}',
+                      ? 'Switched to Display ${idx + 1} ($w x $h)'
+                      : 'Failed to switch display: ${json['error']}',
                 ),
                 backgroundColor: success ? const Color(0xFF10B981) : Colors.red,
                 duration: const Duration(seconds: 2),
@@ -542,8 +542,8 @@ class _MirrorViewState extends State<MirrorView> {
               SnackBar(
                 content: Text(
                   success
-                      ? '🔒 Privacy Mode: ${enabled ? 'ON (Screen blanked & physical inputs locked)' : 'OFF'}'
-                      : '⚠️ Failed to toggle privacy mode: ${json['error']}',
+                      ? 'Privacy Mode: ${enabled ? 'ON (Screen blanked & physical inputs locked)' : 'OFF'}'
+                      : 'Failed to toggle privacy mode: ${json['error']}',
                 ),
                 backgroundColor: (enabled && success)
                     ? const Color(0xFF6366F1)
@@ -560,7 +560,7 @@ class _MirrorViewState extends State<MirrorView> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('⚙️ Action [$action]: $message'),
+                content: Text('Action [$action]: $message'),
                 backgroundColor: success ? const Color(0xFF10B981) : Colors.red,
                 duration: const Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
@@ -575,7 +575,7 @@ class _MirrorViewState extends State<MirrorView> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  '🖥️ Virtual Display: ${installed ? "Driver Installed" : "Driver Not Installed"} • ${isHeadless ? "Headless Mode" : "$activeCount Active"}',
+                  'Virtual Display: ${installed ? "Driver Installed" : "Driver Not Installed"} • ${isHeadless ? "Headless Mode" : "$activeCount Active"}',
                 ),
                 backgroundColor: installed
                     ? const Color(0xFF10B981)
@@ -593,8 +593,8 @@ class _MirrorViewState extends State<MirrorView> {
               SnackBar(
                 content: Text(
                   success
-                      ? '✅ Driver Installed: $message'
-                      : '⚠️ Install Failed: $message',
+                      ? 'Driver Installed: $message'
+                      : 'Install Failed: $message',
                 ),
                 backgroundColor: success ? const Color(0xFF10B981) : Colors.red,
                 duration: const Duration(seconds: 3),
@@ -614,7 +614,7 @@ class _MirrorViewState extends State<MirrorView> {
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('📋 Copied from Host: $preview'),
+                content: Text('Copied from Host: $preview'),
                 duration: const Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
               ),
@@ -651,7 +651,7 @@ class _MirrorViewState extends State<MirrorView> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      '🖥️ Select Active Display',
+                      'Select Active Display',
                       style: TextStyle(
                         color: NeobrutalTheme.ink,
                         fontSize: 18,
@@ -758,7 +758,7 @@ class _MirrorViewState extends State<MirrorView> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('📋 Pasted to Host: $preview'),
+            content: Text('Pasted to Host: $preview'),
             duration: const Duration(seconds: 2),
             behavior: SnackBarBehavior.floating,
           ),
@@ -792,8 +792,8 @@ class _MirrorViewState extends State<MirrorView> {
         SnackBar(
           content: Text(
             _autoClipboardSync
-                ? '📋 Auto Clipboard Sync Enabled'
-                : '📋 Auto Clipboard Sync Disabled',
+                ? 'Auto Clipboard Sync Enabled'
+                : 'Auto Clipboard Sync Disabled',
           ),
           duration: const Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
@@ -811,7 +811,7 @@ class _MirrorViewState extends State<MirrorView> {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_isAudioMuted ? '🔇 Audio muted' : '🔊 Audio unmuted'),
+          content: Text(_isAudioMuted ? 'Audio muted' : 'Audio unmuted'),
           duration: const Duration(seconds: 1),
           behavior: SnackBarBehavior.floating,
         ),

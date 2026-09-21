@@ -620,11 +620,11 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     let is_conn = state.telemetry.is_connected.load(Ordering::Relaxed);
     let is_sharing = state.is_sharing.load(Ordering::Relaxed);
     let (pill_text, pill_bg) = if is_conn {
-        ("[● LIVE] CONNECTED", COLOR_CYAN)
+        ("[LIVE] CONNECTED", COLOR_CYAN)
     } else if is_sharing {
-        ("[● READY] SHARING ACTIVE", COLOR_MINT)
+        ("[READY] SHARING ACTIVE", COLOR_MINT)
     } else {
-        ("[■ PAUSED] SHARING STOPPED", COLOR_DANGER)
+        ("[PAUSED] SHARING STOPPED", COLOR_DANGER)
     };
     let pill_rect = RECT {
         left: 625,
@@ -777,9 +777,9 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
 
     // Toggle Sharing Button
     let (toggle_text, toggle_bg, toggle_hover, toggle_fg) = if is_sharing {
-        ("■ STOP SHARING", COLOR_DANGER, COLOR_PINK, COLOR_INK)
+        ("STOP SHARING", COLOR_DANGER, COLOR_PINK, COLOR_INK)
     } else {
-        ("▶ START SHARING", COLOR_MINT, COLOR_YELLOW, COLOR_INK)
+        ("START SHARING", COLOR_MINT, COLOR_YELLOW, COLOR_INK)
     };
     let is_toggle_hover = state.hover_button == Some(BTN_TOGGLE_HOST);
     draw_button(
@@ -796,9 +796,9 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     // Unattended Access Button
     let is_unattended = state.unattended.read().unwrap().enabled;
     let (unattended_text, unattended_bg, unattended_hover) = if is_unattended {
-        ("🔑 UNATTENDED: ON", COLOR_MINT, COLOR_YELLOW)
+        ("UNATTENDED: ON", COLOR_MINT, COLOR_YELLOW)
     } else {
-        ("🔒 UNATTENDED: OFF", COLOR_WHITE, COLOR_CYAN)
+        ("UNATTENDED: OFF", COLOR_WHITE, COLOR_CYAN)
     };
     let is_unattended_hover = state.hover_button == Some(BTN_UNATTENDED);
     draw_button(
@@ -874,7 +874,7 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     draw_button(
         hdc,
         &RECT_BTN_CONNECT,
-        "⚡ CONNECT TO REMOTE",
+        "CONNECT TO REMOTE",
         COLOR_YELLOW,
         COLOR_MINT,
         COLOR_INK,
@@ -904,7 +904,7 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
         "Headless Canvas (Fallback Ready)"
     };
     let mut stats: Vec<u16> = format!(
-        "⚡ CAPTURE: DXGI Desktop Duplication (GPU Direct)  •  VIDEO: MFT Hardware H.264 Encoder (Zero-Copy)\n🛡️ DISPLAY: {}  •  AUDIO: WASAPI 48kHz Stereo Opus Low-Latency",
+        "CAPTURE: DXGI Desktop Duplication (GPU Direct)  •  VIDEO: MFT Hardware H.264 Encoder (Zero-Copy)\nDISPLAY: {}  •  AUDIO: WASAPI 48kHz Stereo Opus Low-Latency",
         vdd_str
     ).encode_utf16().collect();
     let mut stats_rect = RECT {

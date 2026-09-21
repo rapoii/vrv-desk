@@ -29,10 +29,10 @@ void main() {
       expect(find.text('Alt+Tab'), findsOneWidget);
       expect(find.text('Desktop'), findsOneWidget);
       expect(find.text('Ctrl+Alt+Del'), findsOneWidget);
-      expect(find.text('🛡️ Elevate'), findsOneWidget);
-      expect(find.text('🖥️ Monitor'), findsOneWidget);
-      expect(find.text('🔒 Privacy'), findsOneWidget);
-      expect(find.text('🔒 Lock PC'), findsOneWidget);
+      expect(find.text('Elevate'), findsOneWidget);
+      expect(find.text('Monitor'), findsOneWidget);
+      expect(find.text('Privacy'), findsOneWidget);
+      expect(find.text('Lock PC'), findsOneWidget);
 
       // Tap buttons and verify correct shortcut identifiers are passed
       await tester.tap(find.text('Win'));
@@ -72,23 +72,23 @@ void main() {
       await tester.pump();
       expect(pressedShortcuts.last, 'ctrl_alt_del');
 
-      await tester.ensureVisible(find.text('🛡️ Elevate'));
-      await tester.tap(find.text('🛡️ Elevate'));
+      await tester.ensureVisible(find.text('Elevate'));
+      await tester.tap(find.text('Elevate'));
       await tester.pump();
       expect(pressedShortcuts.last, 'elevate');
 
-      await tester.ensureVisible(find.text('🖥️ Monitor'));
-      await tester.tap(find.text('🖥️ Monitor'));
+      await tester.ensureVisible(find.text('Monitor'));
+      await tester.tap(find.text('Monitor'));
       await tester.pump();
       expect(pressedShortcuts.last, 'switch_monitor');
 
-      await tester.ensureVisible(find.text('🔒 Privacy'));
-      await tester.tap(find.text('🔒 Privacy'));
+      await tester.ensureVisible(find.text('Privacy'));
+      await tester.tap(find.text('Privacy'));
       await tester.pump();
       expect(pressedShortcuts.last, 'privacy_mode');
 
-      await tester.ensureVisible(find.text('🔒 Lock PC'));
-      await tester.tap(find.text('🔒 Lock PC'));
+      await tester.ensureVisible(find.text('Lock PC'));
+      await tester.tap(find.text('Lock PC'));
       await tester.pump();
       expect(pressedShortcuts.last, 'lock_pc');
 

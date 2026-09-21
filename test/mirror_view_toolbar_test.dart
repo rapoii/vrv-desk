@@ -178,14 +178,14 @@ void main() {
       await tester.longPress(clipBtn);
       await tester.pump();
 
-      expect(find.text('📋 Auto Clipboard Sync Disabled'), findsOneWidget);
+      expect(find.text('Auto Clipboard Sync Disabled'), findsOneWidget);
       expect(find.byTooltip('Clipboard Sync Paused (Tap: Paste, Long Press: Toggle)'), findsOneWidget);
 
       // Long press again to toggle on
       await tester.longPress(find.byTooltip('Clipboard Sync Paused (Tap: Paste, Long Press: Toggle)'));
       await tester.pump();
 
-      expect(find.text('📋 Auto Clipboard Sync Enabled'), findsOneWidget);
+      expect(find.text('Auto Clipboard Sync Enabled'), findsOneWidget);
 
       await tester.pump(const Duration(seconds: 6));
     });

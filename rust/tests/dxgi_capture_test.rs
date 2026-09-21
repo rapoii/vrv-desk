@@ -8,7 +8,7 @@ fn test_dxgi_capturer_initialization_and_capture() {
     match capturer_res {
         Ok(mut capturer) => {
             println!(
-                "✅ DxgiCapturer initialized successfully: {}x{}",
+                "DxgiCapturer initialized successfully: {}x{}",
                 capturer.screen_width, capturer.screen_height
             );
             assert!(capturer.screen_width > 0);
@@ -23,12 +23,12 @@ fn test_dxgi_capturer_initialization_and_capture() {
                     assert_eq!(jpeg_bytes[0], 0xFF);
                     assert_eq!(jpeg_bytes[1], 0xD8);
                     println!(
-                        "✅ Captured DxgiCapturer JPEG frame: {} bytes",
+                        "Captured DxgiCapturer JPEG frame: {} bytes",
                         jpeg_bytes.len()
                     );
                 }
                 Ok(None) => {
-                    println!("ℹ️ DXGI capture timeout (no screen update during test window), this is normal behavior for AcquireNextFrame");
+                    println!("DXGI capture timeout (no screen update during test window), this is normal behavior for AcquireNextFrame");
                 }
                 Err(e) => {
                     panic!("DxgiCapturer capture_jpeg failed: {:?}", e);

@@ -171,7 +171,9 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
   }
 
   Widget _buildKey({
-    required String label,
+    String? label,
+    IconData? icon,
+    double iconSize = 15,
     required VoidCallback onTap,
     Color? bg,
     Color? fg,
@@ -184,6 +186,41 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
         ? (bg ?? NeobrutalTheme.mint)
         : (bg ?? NeobrutalTheme.surface);
     final effectiveFg = fg ?? NeobrutalTheme.ink;
+
+    Widget content;
+    if (icon != null && label != null) {
+      content = Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: iconSize, color: effectiveFg),
+          const SizedBox(width: 2),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: effectiveFg,
+              fontSize: fontSize,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.2,
+            ),
+          ),
+        ],
+      );
+    } else if (icon != null) {
+      content = Icon(icon, size: iconSize, color: effectiveFg);
+    } else {
+      content = Text(
+        label ?? '',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: effectiveFg,
+          fontSize: fontSize,
+          fontWeight: FontWeight.w900,
+          letterSpacing: -0.2,
+        ),
+      );
+    }
 
     return Expanded(
       flex: flex,
@@ -221,16 +258,7 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
                         ),
                       ],
               ),
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: effectiveFg,
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.2,
-                ),
-              ),
+              child: content,
             ),
           ),
         ),
@@ -283,9 +311,12 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
                           borderRadius: BorderRadius.circular(2),
                         ),
                         child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: const [
+                            Icon(Icons.bolt, size: 14, color: NeobrutalTheme.ink),
+                            SizedBox(width: 3),
                             Text(
-                              '⚡ Direct',
+                              'Direct',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w900,
@@ -311,9 +342,12 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
                           borderRadius: BorderRadius.circular(2),
                         ),
                         child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: const [
+                            Icon(Icons.send_rounded, size: 12, color: NeobrutalTheme.ink),
+                            SizedBox(width: 3),
                             Text(
-                              '✉️ Send Mode',
+                              'Send Mode',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w900,
@@ -355,13 +389,24 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
                       ),
                     ],
                   ),
-                  child: Text(
-                    _isFnLayer ? '⌨ QWERTY' : '🔧 PC Keys',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                      color: NeobrutalTheme.ink,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _isFnLayer ? Icons.keyboard : Icons.terminal,
+                        size: 13,
+                        color: NeobrutalTheme.ink,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        _isFnLayer ? 'QWERTY' : 'PC Keys',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          color: NeobrutalTheme.ink,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -540,8 +585,10 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
               onTap: () => setState(() => _isAltActive = !_isAltActive),
             ),
             _buildKey(
-              label: '⊞ WIN',
-              fontSize: 11,
+              label: 'WIN',
+              icon: Icons.window,
+              iconSize: 12,
+              fontSize: 10,
               isActive: _isWinActive,
               onTap: () => _triggerShortcut('win'),
             ),
@@ -552,10 +599,11 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
               onTap: () => _triggerShortcut('del'),
             ),
             _buildKey(
-              label: '⌫',
+              key: const Key('keyboard_key_backspace'),
+              icon: Icons.backspace_outlined,
+              iconSize: 16,
               flex: 2,
               bg: const Color(0xFFFFD5D5),
-              fontSize: 14,
               onTap: _handleBackspace,
             ),
           ],
@@ -618,11 +666,12 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
         Row(
           children: [
             _buildKey(
-              label: '⇧',
+              key: const Key('keyboard_key_shift'),
+              icon: Icons.arrow_upward,
+              iconSize: 16,
               flex: 2,
               isActive: _isShiftActive,
               bg: NeobrutalTheme.yellow,
-              fontSize: 16,
               onTap: () => setState(() => _isShiftActive = !_isShiftActive),
             ),
             _buildKey(label: shift ? 'Z' : 'z', onTap: () => _handleChar(shift ? 'Z' : 'z')),
@@ -636,10 +685,11 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
             _buildKey(label: shift ? '>' : '.', onTap: () => _handleChar(shift ? '>' : '.')),
             _buildKey(label: shift ? '?' : '/', onTap: () => _handleChar(shift ? '?' : '/')),
             _buildKey(
-              label: '↵',
+              key: const Key('keyboard_key_enter'),
+              icon: Icons.keyboard_return,
+              iconSize: 16,
               flex: 2,
               bg: NeobrutalTheme.cyan,
-              fontSize: 16,
               onTap: _handleEnter,
             ),
           ],
@@ -673,23 +723,23 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
               onTap: _handleSpace,
             ),
             _buildKey(
-              label: '◄',
-              fontSize: 12,
+              icon: Icons.arrow_left,
+              iconSize: 18,
               onTap: () => _triggerShortcut('left'),
             ),
             _buildKey(
-              label: '▲',
-              fontSize: 12,
+              icon: Icons.arrow_drop_up,
+              iconSize: 18,
               onTap: () => _triggerShortcut('up'),
             ),
             _buildKey(
-              label: '▼',
-              fontSize: 12,
+              icon: Icons.arrow_drop_down,
+              iconSize: 18,
               onTap: () => _triggerShortcut('down'),
             ),
             _buildKey(
-              label: '►',
-              fontSize: 12,
+              icon: Icons.arrow_right,
+              iconSize: 18,
               onTap: () => _triggerShortcut('right'),
             ),
           ],
@@ -718,10 +768,10 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
             _buildKey(label: 'F5', fontSize: 11, bg: NeobrutalTheme.mint, onTap: () => _triggerShortcut('f5')),
             _buildKey(label: 'F6', fontSize: 11, onTap: () => _triggerShortcut('f6')),
             _buildKey(
-              label: '⌫',
+              icon: Icons.backspace_outlined,
+              iconSize: 16,
               flex: 2,
               bg: const Color(0xFFFFD5D5),
-              fontSize: 14,
               onTap: _handleBackspace,
             ),
           ],
@@ -742,10 +792,10 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
             _buildKey(label: 'F11', fontSize: 11, onTap: () => _triggerShortcut('f11')),
             _buildKey(label: 'F12', fontSize: 11, onTap: () => _triggerShortcut('f12')),
             _buildKey(
-              label: '↵',
+              icon: Icons.keyboard_return,
+              iconSize: 16,
               flex: 2,
               bg: NeobrutalTheme.cyan,
-              fontSize: 16,
               onTap: _handleEnter,
             ),
           ],
@@ -831,30 +881,32 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
         Row(
           children: [
             _buildKey(
-              label: '⌨ QWERTY Layout',
+              label: 'QWERTY Layout',
+              icon: Icons.keyboard,
+              iconSize: 14,
               flex: 4,
               bg: NeobrutalTheme.yellow,
               fontSize: 11,
               onTap: () => setState(() => _isFnLayer = false),
             ),
             _buildKey(
-              label: '◄',
-              fontSize: 12,
+              icon: Icons.arrow_left,
+              iconSize: 18,
               onTap: () => _triggerShortcut('left'),
             ),
             _buildKey(
-              label: '▲',
-              fontSize: 12,
+              icon: Icons.arrow_drop_up,
+              iconSize: 18,
               onTap: () => _triggerShortcut('up'),
             ),
             _buildKey(
-              label: '▼',
-              fontSize: 12,
+              icon: Icons.arrow_drop_down,
+              iconSize: 18,
               onTap: () => _triggerShortcut('down'),
             ),
             _buildKey(
-              label: '►',
-              fontSize: 12,
+              icon: Icons.arrow_right,
+              iconSize: 18,
               onTap: () => _triggerShortcut('right'),
             ),
           ],

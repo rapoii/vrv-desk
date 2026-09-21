@@ -294,7 +294,7 @@ void main() {
       // Now muted: volume_off icon and snackbar
       expect(find.byIcon(Icons.volume_off), findsOneWidget);
       expect(mockAudioPlayer.isMuted, isTrue);
-      expect(find.text('🔇 Audio muted'), findsOneWidget);
+      expect(find.text('Audio muted'), findsOneWidget);
 
       // Tap unmute button
       await tester.tap(find.byIcon(Icons.volume_off));
@@ -303,7 +303,7 @@ void main() {
       // Unmuted again
       expect(find.byIcon(Icons.volume_up), findsOneWidget);
       expect(mockAudioPlayer.isMuted, isFalse);
-      expect(find.text('🔊 Audio unmuted'), findsOneWidget);
+      expect(find.text('Audio unmuted'), findsOneWidget);
     });
   });
 }

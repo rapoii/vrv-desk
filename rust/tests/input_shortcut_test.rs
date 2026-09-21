@@ -4,7 +4,7 @@ use mirror_core::platform::windows_input::{
 
 #[test]
 fn test_inject_unicode_text() {
-    let res = inject_unicode_text("Hello World! 🚀");
+    let res = inject_unicode_text("Hello World! Rust");
     assert!(res.is_ok());
 }
 
