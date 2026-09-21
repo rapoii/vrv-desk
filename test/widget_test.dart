@@ -7,7 +7,7 @@ void main() {
     await tester.pump();
 
     // Verify HomeView elements
-    expect(find.text('Mirror & Remote Control'), findsOneWidget);
+    expect(find.text('VrV Desk'), findsOneWidget);
     expect(find.text('Your Device ID'), findsOneWidget);
     expect(find.text('Discovered Devices'), findsOneWidget);
   });

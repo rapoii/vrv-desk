@@ -184,12 +184,13 @@ abstract final class NeobrutalTheme {
         foregroundColor: ink,
         centerTitle: false,
         elevation: 0,
+        toolbarHeight: 64,
         scrolledUnderElevation: 0,
         titleTextStyle: TextStyle(
           color: ink,
-          fontSize: 20,
+          fontSize: 22,
           fontWeight: FontWeight.w900,
-          letterSpacing: -0.2,
+          letterSpacing: -0.4,
         ),
         shape: Border(
           bottom: BorderSide(color: ink, width: borderWidth),

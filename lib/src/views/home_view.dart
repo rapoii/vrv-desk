@@ -303,34 +303,52 @@ class _HomeViewState extends State<HomeView>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mirror & Remote Control'),
+        title: const Text('VrV Desk'),
         actions: [
-          NeobrutalPressable(
-            cornerRadius: 4,
-            shadowOffset: const Offset(2, 2),
-            child: IconButton(
-              key: const Key('scan_qr_appbar_button'),
-              icon: const Icon(Icons.qr_code_scanner),
-              tooltip: 'Scan QR Code',
-              onPressed: _openQrScanner,
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                NeobrutalPressable(
+                  cornerRadius: 4,
+                  shadowOffset: const Offset(2, 2),
+                  child: SizedBox(
+                    width: 38,
+                    height: 38,
+                    child: IconButton(
+                      key: const Key('scan_qr_appbar_button'),
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.qr_code_scanner, size: 20),
+                      tooltip: 'Scan QR Code',
+                      onPressed: _openQrScanner,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                NeobrutalPressable(
+                  cornerRadius: 4,
+                  shadowOffset: const Offset(2, 2),
+                  child: SizedBox(
+                    width: 38,
+                    height: 38,
+                    child: IconButton(
+                      key: const Key('direct_connect_button'),
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.cast, size: 20),
+                      tooltip: 'Connect to Host IP',
+                      onPressed: _showDirectIpDialog,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
-          NeobrutalPressable(
-            cornerRadius: 4,
-            shadowOffset: const Offset(2, 2),
-            child: IconButton(
-              key: const Key('direct_connect_button'),
-              icon: const Icon(Icons.cast),
-              tooltip: 'Connect to Host IP',
-              onPressed: _showDirectIpDialog,
-            ),
-          ),
-          const SizedBox(width: 10),
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
+        padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
