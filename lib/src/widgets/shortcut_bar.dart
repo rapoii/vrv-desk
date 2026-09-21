@@ -42,41 +42,39 @@ class ShortcutBar extends StatelessWidget {
 
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 3),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(4),
-                  onTap: () => onShortcutPressed(id),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    decoration: NeobrutalTheme.compactPanel(
-                      color: NeobrutalTheme.surface,
-                      shadow: true,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (icon != null) ...[
-                          Icon(
-                            icon,
-                            size: 13,
-                            color: NeobrutalTheme.ink,
-                          ),
-                          const SizedBox(width: 4),
-                        ],
-                        Text(
-                          label,
-                          style: const TextStyle(
-                            color: NeobrutalTheme.ink,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                          ),
+              child: NeobrutalPressable(
+                cornerRadius: 4,
+                shadowOffset: const Offset(2, 2),
+                onTap: () => onShortcutPressed(id),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  decoration: NeobrutalTheme.compactPanel(
+                    color: NeobrutalTheme.surface,
+                    shadow: false,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (icon != null) ...[
+                        Icon(
+                          icon,
+                          size: 13,
+                          color: NeobrutalTheme.ink,
                         ),
+                        const SizedBox(width: 4),
                       ],
-                    ),
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          color: NeobrutalTheme.ink,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

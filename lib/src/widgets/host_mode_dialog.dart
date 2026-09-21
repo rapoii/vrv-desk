@@ -538,38 +538,41 @@ class _HostModeDialogState extends State<HostModeDialog> {
             ],
 
             // Toggle Button
-            ElevatedButton.icon(
-              key: const Key('host_mode_toggle_button'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isRunning
-                    ? NeobrutalTheme.danger
-                    : NeobrutalTheme.mint,
-                foregroundColor: NeobrutalTheme.ink,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(NeobrutalTheme.radius),
-                  side: const BorderSide(
-                    color: NeobrutalTheme.ink,
-                    width: NeobrutalTheme.borderWidth,
+            NeobrutalPressable(
+              cornerRadius: NeobrutalTheme.radius,
+              child: ElevatedButton.icon(
+                key: const Key('host_mode_toggle_button'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isRunning
+                      ? NeobrutalTheme.danger
+                      : NeobrutalTheme.mint,
+                  foregroundColor: NeobrutalTheme.ink,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(NeobrutalTheme.radius),
+                    side: const BorderSide(
+                      color: NeobrutalTheme.ink,
+                      width: NeobrutalTheme.borderWidth,
+                    ),
                   ),
                 ),
-              ),
-              onPressed: _isStartingOrStopping ? null : _toggleBroadcasting,
-              icon: _isStartingOrStopping
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          NeobrutalTheme.ink,
+                onPressed: _isStartingOrStopping ? null : _toggleBroadcasting,
+                icon: _isStartingOrStopping
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            NeobrutalTheme.ink,
+                          ),
                         ),
-                      ),
-                    )
-                  : Icon(isRunning ? Icons.stop : Icons.play_arrow),
-              label: Text(
-                isRunning ? 'Stop Broadcasting' : 'Start Broadcasting',
-                style: const TextStyle(fontWeight: FontWeight.w900),
+                      )
+                    : Icon(isRunning ? Icons.stop : Icons.play_arrow),
+                label: Text(
+                  isRunning ? 'Stop Broadcasting' : 'Start Broadcasting',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
               ),
             ),
           ],

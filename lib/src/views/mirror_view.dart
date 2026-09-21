@@ -1716,17 +1716,29 @@ class _MirrorViewState extends State<MirrorView> {
               ),
             ),
 
-            // Unified 100% Virtual PC Keyboard Dock
+            // Unified 100% Virtual PC Keyboard Dock with smooth slide animation
             if (_showVirtualKeyboard)
               Positioned(
                 left: 0,
                 right: 0,
                 bottom: 0,
-                child: UnifiedVirtualKeyboard(
-                  onTextInput: _sendText,
-                  onShortcut: _sendShortcut,
-                  onClose: () => setState(() => _showVirtualKeyboard = false),
-                  initialDirectMode: true,
+                child: TweenAnimationBuilder<Offset>(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  tween: Tween<Offset>(
+                    begin: const Offset(0, 0.25),
+                    end: Offset.zero,
+                  ),
+                  builder: (context, offset, child) => FractionalTranslation(
+                    translation: offset,
+                    child: child,
+                  ),
+                  child: UnifiedVirtualKeyboard(
+                    onTextInput: _sendText,
+                    onShortcut: _sendShortcut,
+                    onClose: () => setState(() => _showVirtualKeyboard = false),
+                    initialDirectMode: true,
+                  ),
                 ),
               ),
 

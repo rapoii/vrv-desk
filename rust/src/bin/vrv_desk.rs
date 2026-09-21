@@ -507,7 +507,7 @@ unsafe fn draw_status_pill(
     text_color: u32,
     font: HFONT,
 ) {
-    draw_card(hdc, rect, bg_color, COLOR_INK, 2, 3, 6);
+    draw_card(hdc, rect, bg_color, COLOR_INK, 2, 0, 6);
 
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, COLORREF(text_color));
@@ -567,7 +567,7 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
         right: 275,
         bottom: 42,
     };
-    draw_card(hdc, &tag_rect, COLOR_YELLOW, COLOR_INK, 2, 2, 4);
+    draw_card(hdc, &tag_rect, COLOR_YELLOW, COLOR_INK, 2, 0, 4);
     SelectObject(hdc, font_badge);
     SetTextColor(hdc, COLORREF(COLOR_INK));
     let mut tag_text: Vec<u16> = "DESKTOP".encode_utf16().collect();
@@ -686,7 +686,7 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
         right: 405,
         bottom: 182,
     };
-    draw_card(hdc, &id_box_rect, COLOR_PAPER, COLOR_INK, 2, 2, 4);
+    draw_card(hdc, &id_box_rect, COLOR_PAPER, COLOR_INK, 2, 0, 4);
 
     SelectObject(hdc, font_giant_id);
     SetTextColor(hdc, COLORREF(COLOR_INK));
@@ -742,7 +742,7 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
         right: 405,
         bottom: 242,
     };
-    draw_card(hdc, &pin_box_rect, COLOR_PAPER, COLOR_INK, 2, 2, 4);
+    draw_card(hdc, &pin_box_rect, COLOR_PAPER, COLOR_INK, 2, 0, 4);
 
     let current_pin = { state.pin.read().unwrap().clone() };
     let formatted_pin = format_six_digit_display(&current_pin);
@@ -985,14 +985,14 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
         font_btn,
     );
 
-    // Console Box: Ink background, crisp 2px ink border, hard shadow, mint text
+    // Console Box: Ink background, crisp 2px ink border, zero shadow, mint text
     let console_rect = RECT {
         left: 45,
         top: 435,
         right: 835,
         bottom: 570,
     };
-    draw_card(hdc, &console_rect, COLOR_CONSOLE_BG, COLOR_INK, 2, 3, 4);
+    draw_card(hdc, &console_rect, COLOR_CONSOLE_BG, COLOR_INK, 2, 0, 4);
 
     if let Ok(logs) = state.telemetry.log_messages.read() {
         let display_lines: Vec<&String> = logs.iter().rev().take(6).collect();

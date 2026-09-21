@@ -226,40 +226,23 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
       flex: flex,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 1.5, vertical: 2.0),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            key: key,
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              height: 38,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: effectiveBg,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(
-                  color: NeobrutalTheme.ink,
-                  width: NeobrutalTheme.compactBorderWidth,
-                ),
-                boxShadow: isActive
-                    ? const [
-                        BoxShadow(
-                          color: NeobrutalTheme.ink,
-                          offset: Offset(1, 1),
-                          blurRadius: 0,
-                        ),
-                      ]
-                    : const [
-                        BoxShadow(
-                          color: NeobrutalTheme.ink,
-                          offset: Offset(2, 2),
-                          blurRadius: 0,
-                        ),
-                      ],
+        child: NeobrutalPressable(
+          key: key,
+          onTap: onTap,
+          cornerRadius: 4,
+          shadowOffset: isActive ? const Offset(1, 1) : const Offset(2, 2),
+          child: Container(
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: effectiveBg,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(
+                color: NeobrutalTheme.ink,
+                width: NeobrutalTheme.compactBorderWidth,
               ),
-              child: content,
             ),
+            child: content,
           ),
         ),
       ),
@@ -364,8 +347,10 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
               const SizedBox(width: 6),
 
               // Layer Toggle: QWERTY vs PC Function
-              GestureDetector(
+              NeobrutalPressable(
                 key: const Key('keyboard_layer_toggle_fn'),
+                cornerRadius: 4,
+                shadowOffset: const Offset(2, 2),
                 onTap: () => setState(() => _isFnLayer = !_isFnLayer),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -381,13 +366,6 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
                       color: NeobrutalTheme.ink,
                       width: NeobrutalTheme.compactBorderWidth,
                     ),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: NeobrutalTheme.ink,
-                        offset: Offset(2, 2),
-                        blurRadius: 0,
-                      ),
-                    ],
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -414,8 +392,10 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
               const Spacer(),
 
               // Close Dock Button
-              GestureDetector(
+              NeobrutalPressable(
                 key: const Key('keyboard_close_button'),
+                cornerRadius: 4,
+                shadowOffset: const Offset(2, 2),
                 onTap: widget.onClose,
                 child: Container(
                   padding: const EdgeInsets.all(4),
@@ -480,8 +460,10 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
                 ),
                 const SizedBox(width: 4),
                 if (_bufferController.text.isNotEmpty)
-                  GestureDetector(
+                  NeobrutalPressable(
                     key: const Key('keyboard_buffer_clear_button'),
+                    cornerRadius: 4,
+                    shadowOffset: const Offset(2, 2),
                     onTap: () => setState(() => _bufferController.clear()),
                     child: Container(
                       height: 34,
@@ -502,8 +484,10 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
                     ),
                   ),
                 const SizedBox(width: 4),
-                GestureDetector(
+                NeobrutalPressable(
                   key: const Key('keyboard_buffer_send_button'),
+                  cornerRadius: 4,
+                  shadowOffset: const Offset(2, 2),
                   onTap: _submitBuffer,
                   child: Container(
                     height: 34,
@@ -515,13 +499,6 @@ class _UnifiedVirtualKeyboardState extends State<UnifiedVirtualKeyboard> {
                         color: NeobrutalTheme.ink,
                         width: NeobrutalTheme.compactBorderWidth,
                       ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: NeobrutalTheme.ink,
-                          offset: Offset(2, 2),
-                          blurRadius: 0,
-                        ),
-                      ],
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,

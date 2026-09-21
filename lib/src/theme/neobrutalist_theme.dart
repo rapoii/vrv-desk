@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Shared neobrutalist design language for VrV Desk.
 ///
@@ -408,4 +409,160 @@ class NeobrutalPanel extends StatelessWidget {
     ),
     child: child,
   );
+}
+
+/// Tactile Neobrutalist interactive container wrapper.
+///
+/// Provides:
+/// - Crisp ink border & hard offset shadow (default Offset(3, 3))
+/// - Animated tactile press micro-interaction (70ms Curves.easeOutQuad):
+///   - On pointer down: translates (+2, +2) and collapses shadow to Offset(0, 0)
+///   - Trigger selection haptic feedback
+///   - On pointer up/cancel: springs back to resting position
+class NeobrutalPressable extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final Offset shadowOffset;
+  final Color shadowColor;
+  final double cornerRadius;
+  final bool enabled;
+
+  const NeobrutalPressable({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.shadowOffset = const Offset(3, 3),
+    this.shadowColor = NeobrutalTheme.ink,
+    this.cornerRadius = 6,
+    this.enabled = true,
+  });
+
+  @override
+  State<NeobrutalPressable> createState() => _NeobrutalPressableState();
+}
+
+class _NeobrutalPressableState extends State<NeobrutalPressable> {
+  bool _isPressed = false;
+
+  void _onPointerDown(PointerDownEvent _) {
+    if (!widget.enabled) return;
+    setState(() => _isPressed = true);
+    HapticFeedback.selectionClick();
+  }
+
+  void _onPointerUp(PointerUpEvent _) {
+    if (!widget.enabled) return;
+    if (_isPressed) setState(() => _isPressed = false);
+  }
+
+  void _onPointerCancel(PointerCancelEvent _) {
+    if (!widget.enabled) return;
+    if (_isPressed) setState(() => _isPressed = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentShadow = _isPressed ? Offset.zero : widget.shadowOffset;
+    final translate = _isPressed ? const Offset(2, 2) : Offset.zero;
+
+    Widget body = AnimatedContainer(
+      duration: const Duration(milliseconds: 70),
+      curve: Curves.easeOutQuad,
+      transform: Matrix4.translationValues(translate.dx, translate.dy, 0),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(widget.cornerRadius),
+        boxShadow: [
+          BoxShadow(
+            color: widget.shadowColor,
+            offset: currentShadow,
+            blurRadius: 0,
+          ),
+        ],
+      ),
+      child: widget.child,
+    );
+
+    if (widget.onTap != null) {
+      body = GestureDetector(
+        onTap: widget.enabled ? widget.onTap : null,
+        behavior: HitTestBehavior.opaque,
+        child: body,
+      );
+    }
+
+    return Listener(
+      onPointerDown: _onPointerDown,
+      onPointerUp: _onPointerUp,
+      onPointerCancel: _onPointerCancel,
+      child: body,
+    );
+  }
+}
+
+/// Static flat badge / tag with crisp ink outline and ZERO shadow.
+///
+/// Used for non-interactive status, tags, counts, and descriptions.
+class NeobrutalBadge extends StatelessWidget {
+  final Widget child;
+  final Color bg;
+  final Color borderColor;
+  final double borderWidth;
+  final double cornerRadius;
+  final EdgeInsetsGeometry padding;
+
+  const NeobrutalBadge({
+    super.key,
+    required this.child,
+    this.bg = NeobrutalTheme.paper,
+    this.borderColor = NeobrutalTheme.ink,
+    this.borderWidth = NeobrutalTheme.compactBorderWidth,
+    this.cornerRadius = 4,
+    this.padding = const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: padding,
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(cornerRadius),
+      border: Border.all(color: borderColor, width: borderWidth),
+    ),
+    child: child,
+  );
+}
+
+/// Smooth staggered entrance animation (fade + slide-up) for view sections.
+class StaggeredCardEntry extends StatelessWidget {
+  final Animation<double> animation;
+  final double startInterval;
+  final double endInterval;
+  final Widget child;
+
+  const StaggeredCardEntry({
+    super.key,
+    required this.animation,
+    required this.startInterval,
+    required this.endInterval,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Interval(startInterval, endInterval, curve: Curves.easeOutCubic),
+    );
+
+    return SlideTransition(
+      position: Tween<Offset>(
+        begin: const Offset(0, 0.08),
+        end: Offset.zero,
+      ).animate(curved),
+      child: FadeTransition(
+        opacity: Tween<double>(begin: 0.0, end: 1.0).animate(curved),
+        child: child,
+      ),
+    );
+  }
 }

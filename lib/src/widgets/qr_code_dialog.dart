@@ -118,32 +118,40 @@ class QrCodeDialog extends StatelessWidget {
         ),
       ),
       actions: [
-        TextButton.icon(
-          icon: const Icon(Icons.copy, size: 16, color: NeobrutalTheme.ink),
-          label: const Text(
-            'Copy Data',
-            style: TextStyle(
-              color: NeobrutalTheme.ink,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          onPressed: () {
-            Clipboard.setData(ClipboardData(text: payload));
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Pairing data copied to clipboard'),
-                duration: Duration(seconds: 2),
+        NeobrutalPressable(
+          cornerRadius: 4,
+          shadowOffset: const Offset(2, 2),
+          child: TextButton.icon(
+            icon: const Icon(Icons.copy, size: 16, color: NeobrutalTheme.ink),
+            label: const Text(
+              'Copy Data',
+              style: TextStyle(
+                color: NeobrutalTheme.ink,
+                fontWeight: FontWeight.w800,
               ),
-            );
-          },
-        ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: NeobrutalTheme.yellow,
-            foregroundColor: NeobrutalTheme.ink,
+            ),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: payload));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Pairing data copied to clipboard'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
           ),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
+        ),
+        NeobrutalPressable(
+          cornerRadius: 6,
+          shadowOffset: const Offset(3, 3),
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: NeobrutalTheme.yellow,
+              foregroundColor: NeobrutalTheme.ink,
+            ),
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
         ),
       ],
     );

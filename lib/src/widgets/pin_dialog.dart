@@ -247,15 +247,24 @@ class _PinDialogState extends State<PinDialog> {
         ],
       ),
       actions: [
-        TextButton(
-          key: const Key('pin_cancel_button'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+        NeobrutalPressable(
+          cornerRadius: 4,
+          shadowOffset: const Offset(2, 2),
+          child: TextButton(
+            key: const Key('pin_cancel_button'),
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
         ),
-        ElevatedButton(
-          key: const Key('pin_submit_button'),
-          onPressed: _isValid ? _submit : null,
-          child: const Text('Connect'),
+        NeobrutalPressable(
+          cornerRadius: 6,
+          shadowOffset: const Offset(3, 3),
+          enabled: _isValid,
+          child: ElevatedButton(
+            key: const Key('pin_submit_button'),
+            onPressed: _isValid ? _submit : null,
+            child: const Text('Connect'),
+          ),
         ),
       ],
     );
