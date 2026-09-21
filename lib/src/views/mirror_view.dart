@@ -13,6 +13,7 @@ import '../services/video_stream_player.dart';
 import '../theme/neobrutalist_theme.dart';
 import '../widgets/pin_dialog.dart';
 import '../widgets/shortcut_bar.dart';
+import '../widgets/unified_virtual_keyboard.dart';
 import 'file_manager_view.dart';
 
 typedef WebSocketConnector = Future<WebSocket> Function(String url);
@@ -62,6 +63,7 @@ class _MirrorViewState extends State<MirrorView> {
   final TextEditingController _textController = TextEditingController();
   final FocusNode _keyboardFocusNode = FocusNode();
   bool _showShortcuts = false;
+  bool _showVirtualKeyboard = false;
 
   // Diagnostic metrics
   bool _isDiagnosticExpanded = false;
@@ -818,11 +820,12 @@ class _MirrorViewState extends State<MirrorView> {
   }
 
   void _toggleKeyboard() {
-    if (_keyboardFocusNode.hasFocus) {
-      _keyboardFocusNode.unfocus();
-    } else {
-      _keyboardFocusNode.requestFocus();
-    }
+    setState(() {
+      _showVirtualKeyboard = !_showVirtualKeyboard;
+      if (!_showVirtualKeyboard && _keyboardFocusNode.hasFocus) {
+        _keyboardFocusNode.unfocus();
+      }
+    });
   }
 
   void _toggleShortcuts() {
@@ -1627,13 +1630,14 @@ class _MirrorViewState extends State<MirrorView> {
                           ),
                           const SizedBox(width: 2),
                           IconButton(
+                            key: const Key('virtual_keyboard_toggle_button'),
                             icon: Icon(
                               Icons.keyboard,
-                              color: _keyboardFocusNode.hasFocus
+                              color: _showVirtualKeyboard
                                   ? NeobrutalTheme.yellow
                                   : Colors.white,
                             ),
-                            tooltip: 'Toggle Soft Keyboard',
+                            tooltip: 'Toggle 100% PC Keyboard',
                             onPressed: _toggleKeyboard,
                           ),
                           const SizedBox(width: 2),
@@ -1711,6 +1715,20 @@ class _MirrorViewState extends State<MirrorView> {
                 ],
               ),
             ),
+
+            // Unified 100% Virtual PC Keyboard Dock
+            if (_showVirtualKeyboard)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: UnifiedVirtualKeyboard(
+                  onTextInput: _sendText,
+                  onShortcut: _sendShortcut,
+                  onClose: () => setState(() => _showVirtualKeyboard = false),
+                  initialDirectMode: true,
+                ),
+              ),
 
             // Network Reconnect Overlay (Buffer timeout > 3.0s)
             if (_isReconnecting)

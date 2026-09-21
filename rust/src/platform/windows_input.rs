@@ -230,144 +230,129 @@ pub fn inject_unicode_text(_text: &str) -> Result<(), String> {
 }
 
 #[cfg(windows)]
+unsafe fn press_single_vk(vk: VIRTUAL_KEY) {
+    let down = INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: vk,
+                wScan: 0,
+                dwFlags: KEYBD_EVENT_FLAGS(0),
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    let up = INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: vk,
+                wScan: 0,
+                dwFlags: KEYEVENTF_KEYUP,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    SendInput(&[down, up], std::mem::size_of::<INPUT>() as i32);
+}
+
+#[cfg(windows)]
+unsafe fn press_combo_vk(mod_vk: VIRTUAL_KEY, key_vk: VIRTUAL_KEY) {
+    let inputs = [
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: mod_vk,
+                    wScan: 0,
+                    dwFlags: KEYBD_EVENT_FLAGS(0),
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        },
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: key_vk,
+                    wScan: 0,
+                    dwFlags: KEYBD_EVENT_FLAGS(0),
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        },
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: key_vk,
+                    wScan: 0,
+                    dwFlags: KEYEVENTF_KEYUP,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        },
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: mod_vk,
+                    wScan: 0,
+                    dwFlags: KEYEVENTF_KEYUP,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        },
+    ];
+    SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+}
+
+#[cfg(windows)]
 pub fn inject_shortcut(name: &str) -> Result<(), String> {
     unsafe {
         match name {
-            "win" => {
-                let down = INPUT {
-                    r#type: INPUT_KEYBOARD,
-                    Anonymous: INPUT_0 {
-                        ki: KEYBDINPUT {
-                            wVk: VK_LWIN,
-                            wScan: 0,
-                            dwFlags: KEYBD_EVENT_FLAGS(0),
-                            time: 0,
-                            dwExtraInfo: 0,
-                        },
-                    },
-                };
-                let up = INPUT {
-                    r#type: INPUT_KEYBOARD,
-                    Anonymous: INPUT_0 {
-                        ki: KEYBDINPUT {
-                            wVk: VK_LWIN,
-                            wScan: 0,
-                            dwFlags: KEYEVENTF_KEYUP,
-                            time: 0,
-                            dwExtraInfo: 0,
-                        },
-                    },
-                };
-                SendInput(&[down, up], std::mem::size_of::<INPUT>() as i32);
-            }
-            "esc" => {
-                let down = INPUT {
-                    r#type: INPUT_KEYBOARD,
-                    Anonymous: INPUT_0 {
-                        ki: KEYBDINPUT {
-                            wVk: VK_ESCAPE,
-                            wScan: 0,
-                            dwFlags: KEYBD_EVENT_FLAGS(0),
-                            time: 0,
-                            dwExtraInfo: 0,
-                        },
-                    },
-                };
-                let up = INPUT {
-                    r#type: INPUT_KEYBOARD,
-                    Anonymous: INPUT_0 {
-                        ki: KEYBDINPUT {
-                            wVk: VK_ESCAPE,
-                            wScan: 0,
-                            dwFlags: KEYEVENTF_KEYUP,
-                            time: 0,
-                            dwExtraInfo: 0,
-                        },
-                    },
-                };
-                SendInput(&[down, up], std::mem::size_of::<INPUT>() as i32);
-            }
-            "enter" => {
-                let down = INPUT {
-                    r#type: INPUT_KEYBOARD,
-                    Anonymous: INPUT_0 {
-                        ki: KEYBDINPUT {
-                            wVk: VK_RETURN,
-                            wScan: 0,
-                            dwFlags: KEYBD_EVENT_FLAGS(0),
-                            time: 0,
-                            dwExtraInfo: 0,
-                        },
-                    },
-                };
-                let up = INPUT {
-                    r#type: INPUT_KEYBOARD,
-                    Anonymous: INPUT_0 {
-                        ki: KEYBDINPUT {
-                            wVk: VK_RETURN,
-                            wScan: 0,
-                            dwFlags: KEYEVENTF_KEYUP,
-                            time: 0,
-                            dwExtraInfo: 0,
-                        },
-                    },
-                };
-                SendInput(&[down, up], std::mem::size_of::<INPUT>() as i32);
-            }
-            "backspace" => {
-                let down = INPUT {
-                    r#type: INPUT_KEYBOARD,
-                    Anonymous: INPUT_0 {
-                        ki: KEYBDINPUT {
-                            wVk: VK_BACK,
-                            wScan: 0,
-                            dwFlags: KEYBD_EVENT_FLAGS(0),
-                            time: 0,
-                            dwExtraInfo: 0,
-                        },
-                    },
-                };
-                let up = INPUT {
-                    r#type: INPUT_KEYBOARD,
-                    Anonymous: INPUT_0 {
-                        ki: KEYBDINPUT {
-                            wVk: VK_BACK,
-                            wScan: 0,
-                            dwFlags: KEYEVENTF_KEYUP,
-                            time: 0,
-                            dwExtraInfo: 0,
-                        },
-                    },
-                };
-                SendInput(&[down, up], std::mem::size_of::<INPUT>() as i32);
-            }
-            "tab" => {
-                let down = INPUT {
-                    r#type: INPUT_KEYBOARD,
-                    Anonymous: INPUT_0 {
-                        ki: KEYBDINPUT {
-                            wVk: VK_TAB,
-                            wScan: 0,
-                            dwFlags: KEYBD_EVENT_FLAGS(0),
-                            time: 0,
-                            dwExtraInfo: 0,
-                        },
-                    },
-                };
-                let up = INPUT {
-                    r#type: INPUT_KEYBOARD,
-                    Anonymous: INPUT_0 {
-                        ki: KEYBDINPUT {
-                            wVk: VK_TAB,
-                            wScan: 0,
-                            dwFlags: KEYEVENTF_KEYUP,
-                            time: 0,
-                            dwExtraInfo: 0,
-                        },
-                    },
-                };
-                SendInput(&[down, up], std::mem::size_of::<INPUT>() as i32);
-            }
+            "win" => press_single_vk(VK_LWIN),
+            "esc" => press_single_vk(VK_ESCAPE),
+            "enter" => press_single_vk(VK_RETURN),
+            "backspace" => press_single_vk(VK_BACK),
+            "tab" => press_single_vk(VK_TAB),
+            "space" => press_single_vk(VK_SPACE),
+            "delete" | "del" => press_single_vk(VK_DELETE),
+            "insert" | "ins" => press_single_vk(VK_INSERT),
+            "home" | "pos1" => press_single_vk(VK_HOME),
+            "end" => press_single_vk(VK_END),
+            "page_up" | "pgup" => press_single_vk(VK_PRIOR),
+            "page_down" | "pgdn" => press_single_vk(VK_NEXT),
+            "prtscn" | "print_screen" | "sysrq" => press_single_vk(VK_SNAPSHOT),
+            "up" | "arrow_up" => press_single_vk(VK_UP),
+            "down" | "arrow_down" => press_single_vk(VK_DOWN),
+            "left" | "arrow_left" => press_single_vk(VK_LEFT),
+            "right" | "arrow_right" => press_single_vk(VK_RIGHT),
+            "f1" => press_single_vk(VK_F1),
+            "f2" => press_single_vk(VK_F2),
+            "f3" => press_single_vk(VK_F3),
+            "f4" => press_single_vk(VK_F4),
+            "f5" => press_single_vk(VK_F5),
+            "f6" => press_single_vk(VK_F6),
+            "f7" => press_single_vk(VK_F7),
+            "f8" => press_single_vk(VK_F8),
+            "f9" => press_single_vk(VK_F9),
+            "f10" => press_single_vk(VK_F10),
+            "f11" => press_single_vk(VK_F11),
+            "f12" => press_single_vk(VK_F12),
+            "ctrl_c" => press_combo_vk(VK_CONTROL, VIRTUAL_KEY(0x43)),
+            "ctrl_v" => press_combo_vk(VK_CONTROL, VIRTUAL_KEY(0x56)),
+            "ctrl_x" => press_combo_vk(VK_CONTROL, VIRTUAL_KEY(0x58)),
+            "ctrl_z" => press_combo_vk(VK_CONTROL, VIRTUAL_KEY(0x5A)),
+            "ctrl_a" => press_combo_vk(VK_CONTROL, VIRTUAL_KEY(0x41)),
+            "win_r" => press_combo_vk(VK_LWIN, VIRTUAL_KEY(0x52)),
+
             "task_manager" => {
                 // Ctrl + Shift + Esc
                 let make_key = |vk: VIRTUAL_KEY, up: bool| INPUT {

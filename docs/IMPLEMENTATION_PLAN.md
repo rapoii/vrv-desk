@@ -1159,3 +1159,16 @@ Rincian spesifikasi teknis dan audit riset pasar terhadap RustDesk, AnyDesk, dan
     - **Ultra:** Native resolution, 6.0 Mbps, 60 FPS (interval 16ms, JPEG fallback Q90).
   - [x] Pengujian live end-to-end terverifikasi penuh (`test_e2e_quality_switching.py`) dengan stream tetap aktif dan transisi mulus.
 
+- [x] **Phase 29: Unified 100% Virtual PC Keyboard (Direct & Buffered Modes)**
+  - [x] Merancang dan mengimplementasikan satu keyboard virtual PC lengkap (100% layout) dalam `lib/src/widgets/unified_virtual_keyboard.dart` dengan desain Neobrutalism (border 2.5–3px ink, hard shadow 3px, high-contrast keys).
+  - [x] Mengintegrasikan switchable dual-mode:
+    - **Mode Direct (⚡ Langsung):** Setiap ketukan tombol (huruf, angka, simbol, shortcut, arrow, F-keys) langsung dipancarkan seketika ke PC host.
+    - **Mode Buffered (✉️ Tunggu Send):** Menyediakan text input box & preview di bagian atas keyboard untuk merangkai kalimat lengkap, dilengkapi tombol clear (`✕`) dan tombol kirim (`➤ SEND`) sebelum disuntikkan ke PC.
+  - [x] Menyediakan layer PC Keys lengkap (`Fn` / `🔧 PC Keys`) yang mencakup `F1`–`F12`, navigation cluster (`Ins`, `Del`, `Home`, `End`, `PgUp`, `PgDn`, `PrtScn`), serta shortcut esensial (`Ctrl+Alt+Del`, `Win+D`, `Alt+Tab`, `Win+R`, `TaskMgr`, `Ctrl+A/C/V/X/Z`).
+  - [x] Mendukung sticky/latching modifiers (`Ctrl`, `Alt`, `Shift`, `Win`) dengan feedback visual aktif (warna mint/kuning) untuk kombinasi tombol yang mudah di layar sentuh.
+  - [x] Memperluas injeksi shortcut pada host Rust (`rust/src/platform/windows_input.rs`) untuk mendukung seluruh navigation keys, function keys (`VK_F1`..`VK_F12`), `PrtScn` (`VK_SNAPSHOT`), dan clipboard combinations.
+  - [x] Menambahkan suite widget unit test komprehensif (`test/unified_virtual_keyboard_test.dart`); 88/88 Flutter tests lulus 100%.
+  - [x] Menguji live E2E Python (`test_e2e_unified_keyboard.py`) terhadap binary host release (`vrv_host.exe`) dengan kelulusan 100%.
+  - [x] Mengambil bukti screenshot verifikasi visual di emulator Android (`Direct Mode`, `Buffered Send Mode`, dan `PC Keys Layer`).
+  - [x] Memastikan seluruh proses emulator, ADB, dan binary uji di-kill bersih demi efisiensi dan keamanan suhu laptop.
+
