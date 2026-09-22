@@ -6,9 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/device.dart';
+import '../models/recent_device.dart';
 import '../services/android_host_service.dart';
 import '../services/lan_discovery_service.dart';
 import '../services/qr_pairing_service.dart';
+import '../services/recent_devices_storage.dart';
 import '../services/unattended_storage.dart';
 import '../theme/neobrutalist_theme.dart';
 import '../widgets/host_mode_dialog.dart';
@@ -49,6 +51,7 @@ class HomeView extends StatefulWidget {
 class _HomeViewState extends State<HomeView>
     with SingleTickerProviderStateMixin {
   late List<DiscoveredDevice> _devices;
+  List<RecentDevice> _recentDevices = [];
   bool _isCopied = false;
   final TextEditingController _quickConnectController = TextEditingController();
   late final LanDiscoveryService _lanService;
@@ -63,6 +66,7 @@ class _HomeViewState extends State<HomeView>
       duration: const Duration(milliseconds: 350),
     )..forward();
     _devices = List.from(widget.initialDevices);
+    _recentDevices = RecentDevicesStorage.getRecentDevices();
     _lanService = widget.lanDiscoveryService ?? LanDiscoveryService();
     _lanService.start();
     _lanSubscription = _lanService.devicesStream.listen((devices) {
@@ -170,6 +174,23 @@ class _HomeViewState extends State<HomeView>
         deviceName: device.deviceName,
         initialSecret: savedPassword,
         onSubmitted: (pin) {
+          RecentDevicesStorage.addOrUpdate(
+            RecentDevice(
+              deviceId: device.deviceId,
+              name: device.deviceName,
+              ip: device.ipAddress,
+              osType: device.osType.toLowerCase().contains('android')
+                  ? 'android'
+                  : 'pc',
+              lastConnected: DateTime.now(),
+              savedPin: pin.isNotEmpty ? pin : null,
+            ),
+          );
+          if (mounted) {
+            setState(() {
+              _recentDevices = RecentDevicesStorage.getRecentDevices();
+            });
+          }
           if (widget.onConnect != null) {
             widget.onConnect!(device, pin);
           } else {
@@ -198,13 +219,37 @@ class _HomeViewState extends State<HomeView>
     );
   }
 
-  void _handleConnectInput(String input, String pin) {
+  void _handleConnectInput(
+    String input,
+    String pin, {
+    String? deviceName,
+    String? osType,
+  }) {
     final clean = input.trim();
     if (clean.isEmpty) return;
 
     final targetKey = clean.replaceAll(' ', '');
     final savedPassword = UnattendedStorage.getSavedPassword(targetKey);
     final cleanPin = pin.trim().isNotEmpty ? pin.trim() : savedPassword;
+
+    RecentDevicesStorage.addOrUpdate(
+      RecentDevice(
+        deviceId: clean,
+        name: deviceName ??
+            (HomeView.is6DigitDeviceId(clean)
+                ? 'Device $clean'
+                : 'Host $clean'),
+        ip: HomeView.is6DigitDeviceId(clean) ? null : clean,
+        osType: osType ?? 'pc',
+        lastConnected: DateTime.now(),
+        savedPin: cleanPin != null && cleanPin.isNotEmpty ? cleanPin : null,
+      ),
+    );
+    if (mounted) {
+      setState(() {
+        _recentDevices = RecentDevicesStorage.getRecentDevices();
+      });
+    }
 
     if (HomeView.is6DigitDeviceId(clean)) {
       final targetId = clean.replaceAll(' ', '');
@@ -225,6 +270,14 @@ class _HomeViewState extends State<HomeView>
         ),
       );
     }
+  }
+
+  String _formatTimeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
   }
 
   void _showDirectIpDialog() {
@@ -352,10 +405,251 @@ class _HomeViewState extends State<HomeView>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // 1. QUICK CONNECT (Top priority for remote controller)
             StaggeredCardEntry(
               animation: _entranceController,
               startInterval: 0.0,
-              endInterval: 0.6,
+              endInterval: 0.5,
+              child: Container(
+                decoration: NeobrutalTheme.panel(
+                  color: NeobrutalTheme.surface,
+                  shadow: true,
+                ),
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.bolt, color: NeobrutalTheme.ink),
+                        SizedBox(width: 8),
+                        Text(
+                          'Quick Connect',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: NeobrutalTheme.ink,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Connect to any remote PC or Phone using 6-digit Device ID or IP address:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: NeobrutalTheme.muted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      key: const Key('quick_connect_field'),
+                      controller: _quickConnectController,
+                      decoration: const InputDecoration(
+                        labelText: 'Remote Device ID or IP',
+                        hintText: 'e.g. 849 201 or 192.168.1.100',
+                        prefixIcon: Icon(Icons.cast_connected),
+                      ),
+                      keyboardType: TextInputType.text,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: NeobrutalPressable(
+                            shadowOffset: const Offset(3, 3),
+                            child: ElevatedButton.icon(
+                              key: const Key('quick_connect_button'),
+                              onPressed: () {
+                                _handleConnectInput(
+                                  _quickConnectController.text,
+                                  '',
+                                );
+                              },
+                              icon: const Icon(Icons.arrow_forward),
+                              label: const Text('Connect to Device'),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        NeobrutalPressable(
+                          cornerRadius: 4,
+                          shadowOffset: const Offset(2, 2),
+                          child: IconButton.filledTonal(
+                            key: const Key('scan_qr_quick_button'),
+                            tooltip: 'Scan QR Code',
+                            icon: const Icon(Icons.qr_code_scanner),
+                            onPressed: _openQrScanner,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // 2. RECENT SESSIONS / DEVICES (1-Tap Reconnect)
+            if (_recentDevices.isNotEmpty) ...[
+              StaggeredCardEntry(
+                animation: _entranceController,
+                startInterval: 0.15,
+                endInterval: 0.65,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.history,
+                                size: 20, color: NeobrutalTheme.ink),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'Recent Devices',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: NeobrutalTheme.ink,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: NeobrutalTheme.compactPanel(
+                                color: NeobrutalTheme.paper,
+                                shadow: false,
+                              ),
+                              child: Text(
+                                '${_recentDevices.length}',
+                                key: const Key('recent_devices_count_text'),
+                                style: const TextStyle(
+                                  color: NeobrutalTheme.ink,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        TextButton(
+                          key: const Key('clear_recent_button'),
+                          onPressed: () {
+                            setState(() {
+                              RecentDevicesStorage.clear();
+                              _recentDevices = [];
+                            });
+                          },
+                          child: const Text(
+                            'Clear',
+                            style: TextStyle(
+                              color: NeobrutalTheme.muted,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _recentDevices.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final dev = _recentDevices[index];
+                        final isAndroid =
+                            dev.osType.toLowerCase().contains('android');
+                        return NeobrutalPressable(
+                          cornerRadius: 4,
+                          shadowOffset: const Offset(3, 3),
+                          child: Container(
+                            decoration: NeobrutalTheme.compactPanel(
+                              color: NeobrutalTheme.surface,
+                              shadow: false,
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: ListTile(
+                                key: Key('recent_device_${dev.deviceId}'),
+                                leading: Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: isAndroid
+                                        ? NeobrutalTheme.cyan
+                                        : NeobrutalTheme.yellow,
+                                    border: Border.all(
+                                      color: NeobrutalTheme.ink,
+                                      width: NeobrutalTheme.compactBorderWidth,
+                                    ),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Icon(
+                                    isAndroid
+                                        ? Icons.phone_android
+                                        : Icons.desktop_windows,
+                                    color: NeobrutalTheme.ink,
+                                  ),
+                                ),
+                                title: Text(
+                                  dev.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    color: NeobrutalTheme.ink,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  'ID: ${dev.deviceId} • ${_formatTimeAgo(dev.lastConnected)}',
+                                  style: const TextStyle(
+                                    color: NeobrutalTheme.muted,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                trailing: NeobrutalPressable(
+                                  shadowOffset: const Offset(2, 2),
+                                  child: ElevatedButton(
+                                    key: Key('reconnect_button_${dev.deviceId}'),
+                                    onPressed: () => _handleConnectInput(
+                                      dev.deviceId,
+                                      dev.savedPin ?? '',
+                                      deviceName: dev.name,
+                                      osType: dev.osType,
+                                    ),
+                                    child: const Text('Connect'),
+                                  ),
+                                ),
+                                onTap: () => _handleConnectInput(
+                                  dev.deviceId,
+                                  dev.savedPin ?? '',
+                                  deviceName: dev.name,
+                                  osType: dev.osType,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            // 3. THIS DEVICE (Your Device ID) - Compact & Clean
+            StaggeredCardEntry(
+              animation: _entranceController,
+              startInterval: 0.3,
+              endInterval: 0.8,
               child: Container(
                 decoration: NeobrutalTheme.panel(
                   color: NeobrutalTheme.surface,
@@ -453,90 +747,6 @@ class _HomeViewState extends State<HomeView>
                         ),
                       ),
                     ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            StaggeredCardEntry(
-              animation: _entranceController,
-              startInterval: 0.2,
-              endInterval: 0.8,
-              child: Container(
-                decoration: NeobrutalTheme.panel(
-                  color: NeobrutalTheme.surface,
-                  shadow: true,
-                ),
-                padding: const EdgeInsets.all(12.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.bolt, color: NeobrutalTheme.ink),
-                        SizedBox(width: 8),
-                        Text(
-                          'Quick Connect',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: NeobrutalTheme.ink,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Connect to any remote PC using 6-digit Device ID or local IP address:',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: NeobrutalTheme.muted,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      key: const Key('quick_connect_field'),
-                      controller: _quickConnectController,
-                      decoration: const InputDecoration(
-                        labelText: 'Remote Device ID or IP',
-                        hintText: 'e.g. 849 201 or 192.168.1.100',
-                        prefixIcon: Icon(Icons.cast_connected),
-                      ),
-                      keyboardType: TextInputType.text,
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: NeobrutalPressable(
-                            shadowOffset: const Offset(3, 3),
-                            child: ElevatedButton.icon(
-                              key: const Key('quick_connect_button'),
-                              onPressed: () {
-                                _handleConnectInput(
-                                  _quickConnectController.text,
-                                  '',
-                                );
-                              },
-                              icon: const Icon(Icons.arrow_forward),
-                              label: const Text('Connect to Device'),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        NeobrutalPressable(
-                          cornerRadius: 4,
-                          shadowOffset: const Offset(2, 2),
-                          child: IconButton.filledTonal(
-                            key: const Key('scan_qr_quick_button'),
-                            tooltip: 'Scan QR Code',
-                            icon: const Icon(Icons.qr_code_scanner),
-                            onPressed: _openQrScanner,
-                          ),
-                        ),
-                      ],
-                    ),
                   ],
                 ),
               ),

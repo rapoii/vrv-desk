@@ -300,6 +300,7 @@ void main() {
       // Tap connect on discovered device
       final connectBtnFinder = find.byKey(Key('connect_button_${device.deviceId}'));
       expect(connectBtnFinder, findsOneWidget);
+      await tester.ensureVisible(connectBtnFinder);
       await tester.tap(connectBtnFinder);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));

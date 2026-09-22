@@ -30,7 +30,61 @@ const COLOR_MINT: u32 = 0x00A8F17B; // #7BF1A8 - Success / Active accent
 const COLOR_DANGER: u32 = 0x005C5CFF; // #FF5C5C - Warning / Stop accent
 const COLOR_MUTED: u32 = 0x005B5B5B; // #5B5B5B - Secondary text
 
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct RecentDevice {
+    device_id: String,
+    name: String,
+    os_type: String, // "pc" or "android"
+    last_seen: String,
+}
+
+fn get_recent_devices_path() -> std::path::PathBuf {
+    if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
+        let dir = std::path::PathBuf::from(local_appdata).join("vrv-desk");
+        let _ = std::fs::create_dir_all(&dir);
+        dir.join("recent_devices.json")
+    } else {
+        std::path::PathBuf::from("recent_devices.json")
+    }
+}
+
+fn load_recent_devices() -> Vec<RecentDevice> {
+    let path = get_recent_devices_path();
+    if path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            if let Ok(devices) = serde_json::from_str::<Vec<RecentDevice>>(&content) {
+                if !devices.is_empty() {
+                    return devices;
+                }
+            }
+        }
+    }
+    vec![
+        RecentDevice {
+            device_id: "849201".to_string(),
+            name: "LAPTOP-PONGO".to_string(),
+            os_type: "pc".to_string(),
+            last_seen: "Online".to_string(),
+        },
+        RecentDevice {
+            device_id: "456377".to_string(),
+            name: "GALAXY-PHONE".to_string(),
+            os_type: "android".to_string(),
+            last_seen: "Online".to_string(),
+        },
+    ]
+}
+
+fn save_recent_devices(devices: &[RecentDevice]) {
+    let path = get_recent_devices_path();
+    if let Ok(json) = serde_json::to_string_pretty(devices) {
+        let _ = std::fs::write(&path, json);
+    }
+}
+
 struct AppState {
+    recent_devices: Vec<RecentDevice>,
     device_id: String,
     pin: Arc<std::sync::RwLock<String>>,
     unattended: Arc<std::sync::RwLock<mirror_core::unattended::UnattendedConfig>>,
@@ -54,6 +108,22 @@ const BTN_TOGGLE_HOST: u32 = 3;
 const BTN_CONNECT: u32 = 4;
 const BTN_UNATTENDED: u32 = 5;
 const BTN_ELEVATE: u32 = 6;
+const BTN_RECENT_1: u32 = 10;
+const BTN_RECENT_2: u32 = 11;
+
+const RECT_CARD_RECENT_1: RECT = RECT {
+    left: 45,
+    top: 485,
+    right: 440,
+    bottom: 565,
+};
+const RECT_CARD_RECENT_2: RECT = RECT {
+    left: 460,
+    top: 485,
+    right: 845,
+    bottom: 565,
+};
+
 
 // Button Rectangles (Simple beginner-friendly neobrutalist layout)
 const RECT_BTN_COPY_ID: RECT = RECT {
@@ -183,6 +253,10 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 new_hover = Some(BTN_CONNECT);
             } else if point_in_rect(pt, RECT_BTN_ELEVATE) {
                 new_hover = Some(BTN_ELEVATE);
+            } else if point_in_rect(pt, RECT_CARD_RECENT_1) {
+                new_hover = Some(BTN_RECENT_1);
+            } else if point_in_rect(pt, RECT_CARD_RECENT_2) {
+                new_hover = Some(BTN_RECENT_2);
             }
 
             if let Some(ref mut state) = APP_STATE {
@@ -242,10 +316,62 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                         .add_log(format!("Unattended Access is now {}", status));
                     InvalidateRect(hwnd, None, BOOL(0));
                 } else if point_in_rect(pt, RECT_BTN_CONNECT) {
+                    let mut buf = [0u16; 64];
+                    let len = GetWindowTextW(state.edit_remote_id, &mut buf);
+                    if len > 0 {
+                        let raw_id = String::from_utf16_lossy(&buf[..len as usize]).trim().replace(' ', "");
+                        if !raw_id.is_empty() {
+                            let mut existing: Vec<RecentDevice> = state.recent_devices.clone();
+                            existing.retain(|d| d.device_id != raw_id);
+                            existing.insert(
+                                0,
+                                RecentDevice {
+                                    device_id: raw_id.clone(),
+                                    name: format!("DEVICE-{}", &raw_id[..raw_id.len().min(6)]),
+                                    os_type: "pc".to_string(),
+                                    last_seen: "Just now".to_string(),
+                                },
+                            );
+                            if existing.len() > 10 {
+                                existing.truncate(10);
+                            }
+                            save_recent_devices(&existing);
+                            state.recent_devices = existing;
+                            state.telemetry.add_log(format!("Saved {} to Recent Devices", raw_id));
+                        }
+                    }
                     state
                         .telemetry
                         .add_log("Connecting to remote device...".to_string());
                     InvalidateRect(hwnd, None, BOOL(0));
+                } else if point_in_rect(pt, RECT_CARD_RECENT_1) {
+                    if !state.recent_devices.is_empty() {
+                        let id = &state.recent_devices[0].device_id;
+                        let mut id_w: Vec<u16> = id.encode_utf16().collect();
+                        id_w.push(0);
+                        let _ = SendMessageW(
+                            state.edit_remote_id,
+                            WM_SETTEXT,
+                            WPARAM(0),
+                            LPARAM(id_w.as_ptr() as _),
+                        );
+                        state.telemetry.add_log(format!("Selected recent device: {}", id));
+                        InvalidateRect(hwnd, None, BOOL(0));
+                    }
+                } else if point_in_rect(pt, RECT_CARD_RECENT_2) {
+                    if state.recent_devices.len() > 1 {
+                        let id = &state.recent_devices[1].device_id;
+                        let mut id_w: Vec<u16> = id.encode_utf16().collect();
+                        id_w.push(0);
+                        let _ = SendMessageW(
+                            state.edit_remote_id,
+                            WM_SETTEXT,
+                            WPARAM(0),
+                            LPARAM(id_w.as_ptr() as _),
+                        );
+                        state.telemetry.add_log(format!("Selected recent device: {}", id));
+                        InvalidateRect(hwnd, None, BOOL(0));
+                    }
                 } else if point_in_rect(pt, RECT_BTN_ELEVATE) {
                     if !state.is_elevated {
                         state
@@ -926,14 +1052,150 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     DrawTextW(hdc, &mut tip_text, &mut tip_rect, DT_LEFT | DT_WORDBREAK);
 
     // ------------------------------------------------------------------------
-    // 4. Bottom Security & Performance Strip
+    // 4. Middle-Bottom: RECENT SESSIONS & DEVICES (1-Tap Reconnect)
+    // ------------------------------------------------------------------------
+    let recent_section = RECT {
+        left: 25,
+        top: 450,
+        right: 865,
+        bottom: 580,
+    };
+    draw_card(hdc, &recent_section, COLOR_WHITE, COLOR_INK, 3, 4, 6);
+
+    SelectObject(hdc, font_card_header);
+    SetTextColor(hdc, COLORREF(COLOR_INK));
+    let mut recent_header_rect = RECT {
+        left: 45,
+        top: 460,
+        right: 845,
+        bottom: 482,
+    };
+    let mut recent_header: Vec<u16> = "RECENT DEVICES (1-TAP RECONNECT)".encode_utf16().collect();
+    DrawTextW(
+        hdc,
+        &mut recent_header,
+        &mut recent_header_rect,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+    );
+
+    // Render Recent Card 1
+    if !state.recent_devices.is_empty() {
+        let dev1 = &state.recent_devices[0];
+        let is_hover1 = state.hover_button == Some(BTN_RECENT_1);
+        let card1_bg = if is_hover1 { COLOR_PAPER } else { COLOR_WHITE };
+        draw_card(hdc, &RECT_CARD_RECENT_1, card1_bg, COLOR_INK, 2, if is_hover1 { 1 } else { 3 }, 4);
+
+        // OS Tag badge
+        let os_tag_rect = RECT {
+            left: 58,
+            top: 498,
+            right: 125,
+            bottom: 522,
+        };
+        let tag_bg = if dev1.os_type == "android" { COLOR_CYAN } else { COLOR_MINT };
+        let tag_label = if dev1.os_type == "android" { "PHONE" } else { "PC" };
+        draw_status_pill(hdc, &os_tag_rect, tag_label, tag_bg, COLOR_INK, font_badge);
+
+        // Name
+        SelectObject(hdc, font_btn);
+        SetTextColor(hdc, COLORREF(COLOR_INK));
+        let mut name_rect = RECT {
+            left: 135,
+            top: 498,
+            right: 330,
+            bottom: 522,
+        };
+        let mut name_w: Vec<u16> = dev1.name.encode_utf16().collect();
+        DrawTextW(hdc, &mut name_w, &mut name_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+        // Subtitle ID
+        SelectObject(hdc, font_tip);
+        SetTextColor(hdc, COLORREF(COLOR_MUTED));
+        let mut sub_rect1 = RECT {
+            left: 58,
+            top: 530,
+            right: 330,
+            bottom: 550,
+        };
+        let mut sub_w1: Vec<u16> = format!("ID: {} • {}", format_six_digit_display(&dev1.device_id), dev1.last_seen)
+            .encode_utf16()
+            .collect();
+        DrawTextW(hdc, &mut sub_w1, &mut sub_rect1, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+        // Connect button inside card
+        let btn_conn1 = RECT {
+            left: 340,
+            top: 502,
+            right: 425,
+            bottom: 546,
+        };
+        draw_button(hdc, &btn_conn1, "CONNECT", COLOR_YELLOW, COLOR_MINT, COLOR_INK, is_hover1, font_btn);
+    }
+
+    // Render Recent Card 2
+    if state.recent_devices.len() > 1 {
+        let dev2 = &state.recent_devices[1];
+        let is_hover2 = state.hover_button == Some(BTN_RECENT_2);
+        let card2_bg = if is_hover2 { COLOR_PAPER } else { COLOR_WHITE };
+        draw_card(hdc, &RECT_CARD_RECENT_2, card2_bg, COLOR_INK, 2, if is_hover2 { 1 } else { 3 }, 4);
+
+        // OS Tag badge
+        let os_tag_rect = RECT {
+            left: 473,
+            top: 498,
+            right: 540,
+            bottom: 522,
+        };
+        let tag_bg = if dev2.os_type == "android" { COLOR_CYAN } else { COLOR_MINT };
+        let tag_label = if dev2.os_type == "android" { "PHONE" } else { "PC" };
+        draw_status_pill(hdc, &os_tag_rect, tag_label, tag_bg, COLOR_INK, font_badge);
+
+        // Name
+        SelectObject(hdc, font_btn);
+        SetTextColor(hdc, COLORREF(COLOR_INK));
+        let mut name_rect = RECT {
+            left: 550,
+            top: 498,
+            right: 735,
+            bottom: 522,
+        };
+        let mut name_w: Vec<u16> = dev2.name.encode_utf16().collect();
+        DrawTextW(hdc, &mut name_w, &mut name_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+        // Subtitle ID
+        SelectObject(hdc, font_tip);
+        SetTextColor(hdc, COLORREF(COLOR_MUTED));
+        let mut sub_rect2 = RECT {
+            left: 473,
+            top: 530,
+            right: 735,
+            bottom: 550,
+        };
+        let mut sub_w2: Vec<u16> = format!("ID: {} • {}", format_six_digit_display(&dev2.device_id), dev2.last_seen)
+            .encode_utf16()
+            .collect();
+        DrawTextW(hdc, &mut sub_w2, &mut sub_rect2, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+        // Connect button inside card
+        let btn_conn2 = RECT {
+            left: 745,
+            top: 502,
+            right: 830,
+            bottom: 546,
+        };
+        draw_button(hdc, &btn_conn2, "CONNECT", COLOR_YELLOW, COLOR_MINT, COLOR_INK, is_hover2, font_btn);
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. Bottom Security & Performance Strip
     // ------------------------------------------------------------------------
     let footer_card = RECT {
         left: 25,
-        top: 454,
+        top: 595,
         right: 865,
-        bottom: 494,
+        bottom: 630,
     };
+
     draw_card(hdc, &footer_card, COLOR_PAPER, COLOR_INK, 2, 0, 4);
 
     SelectObject(hdc, font_footer);
@@ -984,6 +1246,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server_device_id = device_id.clone();
     let server_host_name = host_name.clone();
     let server_telem = telemetry.clone();
+    let recent_devices = load_recent_devices();
 
     // Spawn Background Tokio Runtime for VrV Desk Host Engine
     std::thread::spawn(move || {
@@ -1023,6 +1286,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             hwnd: HWND::default(),
             edit_remote_id: HWND::default(),
             edit_remote_pin: HWND::default(),
+            recent_devices,
         });
 
         let hinstance = GetModuleHandleW(None)?;
@@ -1045,7 +1309,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let screen_w = GetSystemMetrics(SM_CXSCREEN);
         let screen_h = GetSystemMetrics(SM_CYSCREEN);
         let win_w = 900;
-        let win_h = 560;
+        let win_h = 680;
         let x = (screen_w - win_w) / 2;
         let y = (screen_h - win_h) / 2;
 
