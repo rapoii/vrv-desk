@@ -29,7 +29,6 @@ const COLOR_PINK: u32 = 0x00A670FF; // #FF70A6 - Accent badges / highlights
 const COLOR_MINT: u32 = 0x00A8F17B; // #7BF1A8 - Success / Active accent
 const COLOR_DANGER: u32 = 0x005C5CFF; // #FF5C5C - Warning / Stop accent
 const COLOR_MUTED: u32 = 0x005B5B5B; // #5B5B5B - Secondary text
-const COLOR_CONSOLE_BG: u32 = 0x00111111; // #111111 - Terminal ink background
 
 struct AppState {
     device_id: String,
@@ -53,52 +52,45 @@ const BTN_COPY_ID: u32 = 1;
 const BTN_NEW_PIN: u32 = 2;
 const BTN_TOGGLE_HOST: u32 = 3;
 const BTN_CONNECT: u32 = 4;
-const BTN_CLEAR_LOG: u32 = 5;
-const BTN_UNATTENDED: u32 = 6;
-const BTN_ELEVATE: u32 = 7;
+const BTN_UNATTENDED: u32 = 5;
+const BTN_ELEVATE: u32 = 6;
 
-// Button Rectangles (Consistent with Layout & Hit Testing)
+// Button Rectangles (Simple beginner-friendly neobrutalist layout)
 const RECT_BTN_COPY_ID: RECT = RECT {
-    left: 420,
-    top: 135,
-    right: 510,
-    bottom: 175,
+    left: 305,
+    top: 162,
+    right: 415,
+    bottom: 206,
 };
 const RECT_BTN_NEW_PIN: RECT = RECT {
-    left: 420,
-    top: 195,
-    right: 510,
-    bottom: 235,
+    left: 305,
+    top: 238,
+    right: 415,
+    bottom: 282,
 };
 const RECT_BTN_TOGGLE_HOST: RECT = RECT {
     left: 45,
-    top: 255,
-    right: 230,
-    bottom: 295,
+    top: 300,
+    right: 415,
+    bottom: 352,
 };
 const RECT_BTN_UNATTENDED: RECT = RECT {
-    left: 245,
-    top: 255,
-    right: 510,
-    bottom: 295,
+    left: 45,
+    top: 366,
+    right: 415,
+    bottom: 418,
 };
 const RECT_BTN_CONNECT: RECT = RECT {
-    left: 565,
-    top: 255,
-    right: 835,
-    bottom: 295,
-};
-const RECT_BTN_CLEAR_LOG: RECT = RECT {
-    left: 745,
-    top: 405,
-    right: 835,
-    bottom: 430,
+    left: 475,
+    top: 300,
+    right: 845,
+    bottom: 362,
 };
 const RECT_BTN_ELEVATE: RECT = RECT {
-    left: 495,
-    top: 22,
+    left: 480,
+    top: 16,
     right: 615,
-    bottom: 52,
+    bottom: 48,
 };
 
 fn point_in_rect(pt: POINT, r: RECT) -> bool {
@@ -127,10 +119,10 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 w!("EDIT"),
                 w!(""),
                 WS_CHILD | WS_VISIBLE | WS_BORDER | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
-                565,
-                150,
-                270,
-                28,
+                475,
+                162,
+                370,
+                44,
                 hwnd,
                 HMENU(101 as _),
                 hinstance,
@@ -142,10 +134,10 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 w!("EDIT"),
                 w!(""),
                 WS_CHILD | WS_VISIBLE | WS_BORDER | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
-                565,
-                210,
-                270,
-                28,
+                475,
+                238,
+                370,
+                44,
                 hwnd,
                 HMENU(102 as _),
                 hinstance,
@@ -153,7 +145,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             );
 
             // Set bold clean Segoe UI font on native edit controls
-            let edit_font = make_font(15, FW_BOLD.0 as i32, w!("Segoe UI"));
+            let edit_font = make_font(18, FW_BOLD.0 as i32, w!("Segoe UI"));
             let _ = SendMessageW(edit_id, WM_SETFONT, WPARAM(edit_font.0 as _), LPARAM(1));
             let _ = SendMessageW(edit_pin, WM_SETFONT, WPARAM(edit_font.0 as _), LPARAM(1));
 
@@ -189,8 +181,6 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 new_hover = Some(BTN_UNATTENDED);
             } else if point_in_rect(pt, RECT_BTN_CONNECT) {
                 new_hover = Some(BTN_CONNECT);
-            } else if point_in_rect(pt, RECT_BTN_CLEAR_LOG) {
-                new_hover = Some(BTN_CLEAR_LOG);
             } else if point_in_rect(pt, RECT_BTN_ELEVATE) {
                 new_hover = Some(BTN_ELEVATE);
             }
@@ -250,11 +240,6 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     state
                         .telemetry
                         .add_log(format!("Unattended Access is now {}", status));
-                    InvalidateRect(hwnd, None, BOOL(0));
-                } else if point_in_rect(pt, RECT_BTN_CLEAR_LOG) {
-                    if let Ok(mut logs) = state.telemetry.log_messages.write() {
-                        logs.clear();
-                    }
                     InvalidateRect(hwnd, None, BOOL(0));
                 } else if point_in_rect(pt, RECT_BTN_CONNECT) {
                     state
@@ -528,18 +513,20 @@ unsafe fn draw_status_pill(
 unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     SetBkMode(hdc, TRANSPARENT);
 
-    // Instantiate typography hierarchy using native system fonts
-    let font_title = make_font(28, 900, w!("Arial Black"));
-    let font_badge = make_font(12, FW_BOLD.0 as i32, w!("Segoe UI"));
-    let font_subtitle = make_font(13, FW_BOLD.0 as i32, w!("Segoe UI"));
+    // Typography hierarchy using crisp system fonts
+    let font_title = make_font(26, 900, w!("Arial Black"));
+    let font_badge = make_font(11, FW_BOLD.0 as i32, w!("Segoe UI"));
+    let font_subtitle = make_font(12, FW_BOLD.0 as i32, w!("Segoe UI"));
     let font_card_header = make_font(16, 900, w!("Arial Black"));
-    let font_label = make_font(12, FW_BOLD.0 as i32, w!("Segoe UI"));
-    let font_giant_id = make_font(28, 900, w!("Arial Black"));
+    let font_card_subtitle = make_font(12, FW_NORMAL.0 as i32, w!("Segoe UI"));
+    let font_label = make_font(11, FW_BOLD.0 as i32, w!("Segoe UI"));
+    let font_giant_id = make_font(26, 900, w!("Arial Black"));
     let font_giant_pin = make_font(24, 900, w!("Arial Black"));
     let font_btn = make_font(13, FW_BOLD.0 as i32, w!("Segoe UI"));
-    let font_btn_lg = make_font(14, 900, w!("Segoe UI"));
-    let font_console = make_font(13, FW_NORMAL.0 as i32, w!("Consolas"));
-    let font_footer = make_font(12, FW_BOLD.0 as i32, w!("Segoe UI"));
+    let font_btn_action = make_font(14, 900, w!("Arial Black"));
+    let font_btn_lg = make_font(16, 900, w!("Arial Black"));
+    let font_tip = make_font(11, FW_NORMAL.0 as i32, w!("Segoe UI"));
+    let font_footer = make_font(11, FW_BOLD.0 as i32, w!("Segoe UI"));
 
     // ------------------------------------------------------------------------
     // 1. Header Area
@@ -548,9 +535,9 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     SetTextColor(hdc, COLORREF(COLOR_INK));
     let mut title_rect = RECT {
         left: 25,
-        top: 15,
-        right: 215,
-        bottom: 47,
+        top: 14,
+        right: 185,
+        bottom: 44,
     };
     let mut title_str: Vec<u16> = "VRV DESK".encode_utf16().collect();
     DrawTextW(
@@ -562,15 +549,15 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
 
     // Accent Edition Tag next to Title
     let tag_rect = RECT {
-        left: 200,
-        top: 20,
-        right: 275,
-        bottom: 42,
+        left: 195,
+        top: 18,
+        right: 265,
+        bottom: 40,
     };
     draw_card(hdc, &tag_rect, COLOR_YELLOW, COLOR_INK, 2, 0, 4);
     SelectObject(hdc, font_badge);
     SetTextColor(hdc, COLORREF(COLOR_INK));
-    let mut tag_text: Vec<u16> = "DESKTOP".encode_utf16().collect();
+    let mut tag_text: Vec<u16> = "v0.14.0".encode_utf16().collect();
     let mut tag_draw_rect = tag_rect;
     DrawTextW(
         hdc,
@@ -584,11 +571,11 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     SetTextColor(hdc, COLORREF(COLOR_MUTED));
     let mut sub_rect = RECT {
         left: 25,
-        top: 48,
-        right: 480,
-        bottom: 68,
+        top: 44,
+        right: 470,
+        bottom: 64,
     };
-    let mut sub_str: Vec<u16> = "Ultra-low latency Remote Desktop & Screen Mirror"
+    let mut sub_str: Vec<u16> = "Simple remote help — share your numbers or connect to a friend"
         .encode_utf16()
         .collect();
     DrawTextW(
@@ -616,7 +603,7 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
         font_btn,
     );
 
-    // Header Status Pill (Shape + Text + Color, never color alone)
+    // Header Status Pill
     let is_conn = state.telemetry.is_connected.load(Ordering::Relaxed);
     let is_sharing = state.is_sharing.load(Ordering::Relaxed);
     let (pill_text, pill_bg) = if is_conn {
@@ -628,33 +615,33 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     };
     let pill_rect = RECT {
         left: 625,
-        top: 22,
-        right: 855,
-        bottom: 52,
+        top: 16,
+        right: 865,
+        bottom: 48,
     };
     draw_status_pill(hdc, &pill_rect, pill_text, pill_bg, COLOR_INK, font_btn);
 
     // ------------------------------------------------------------------------
-    // 2. Main Action Cards
+    // 2. Left Card: THIS COMPUTER (HOST)
     // ------------------------------------------------------------------------
-    // Left Card: This Device (Host)
     let card_host = RECT {
         left: 25,
-        top: 85,
-        right: 535,
-        bottom: 310,
+        top: 72,
+        right: 435,
+        bottom: 438,
     };
     draw_card(hdc, &card_host, COLOR_WHITE, COLOR_INK, 3, 4, 6);
 
+    // Header
     SelectObject(hdc, font_card_header);
     SetTextColor(hdc, COLORREF(COLOR_INK));
     let mut host_header_rect = RECT {
         left: 45,
-        top: 98,
-        right: 515,
-        bottom: 122,
+        top: 86,
+        right: 415,
+        bottom: 110,
     };
-    let mut host_header: Vec<u16> = "THIS COMPUTER (HOST ENGINE)".encode_utf16().collect();
+    let mut host_header: Vec<u16> = "THIS COMPUTER (HOST)".encode_utf16().collect();
     DrawTextW(
         hdc,
         &mut host_header,
@@ -662,16 +649,35 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
         DT_LEFT | DT_VCENTER | DT_SINGLELINE,
     );
 
-    // Device ID Section
+    // Subtitle
+    SelectObject(hdc, font_card_subtitle);
+    SetTextColor(hdc, COLORREF(COLOR_MUTED));
+    let mut host_sub_rect = RECT {
+        left: 45,
+        top: 110,
+        right: 415,
+        bottom: 130,
+    };
+    let mut host_sub: Vec<u16> = "Share your ID & PIN to let someone help you:"
+        .encode_utf16()
+        .collect();
+    DrawTextW(
+        hdc,
+        &mut host_sub,
+        &mut host_sub_rect,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+    );
+
+    // Label ID
     SelectObject(hdc, font_label);
     SetTextColor(hdc, COLORREF(COLOR_MUTED));
     let mut id_lbl_rect = RECT {
         left: 45,
-        top: 126,
-        right: 350,
-        bottom: 142,
+        top: 140,
+        right: 295,
+        bottom: 158,
     };
-    let mut id_lbl: Vec<u16> = "[ID] YOUR 6-DIGIT DEVICE ID".encode_utf16().collect();
+    let mut id_lbl: Vec<u16> = "YOUR 6-DIGIT DEVICE ID".encode_utf16().collect();
     DrawTextW(
         hdc,
         &mut id_lbl,
@@ -679,12 +685,12 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
         DT_LEFT | DT_VCENTER | DT_SINGLELINE,
     );
 
-    // ID Container Box
+    // ID Container Box (Flat yellow paper, crisp border, zero shadow)
     let id_box_rect = RECT {
         left: 45,
-        top: 144,
-        right: 405,
-        bottom: 182,
+        top: 162,
+        right: 295,
+        bottom: 206,
     };
     draw_card(hdc, &id_box_rect, COLOR_PAPER, COLOR_INK, 2, 0, 4);
 
@@ -693,16 +699,16 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     let formatted_id = format_six_digit_display(&state.device_id);
     let mut id_val_rect = RECT {
         left: 55,
-        top: 144,
-        right: 395,
-        bottom: 182,
+        top: 162,
+        right: 285,
+        bottom: 206,
     };
     let mut id_val: Vec<u16> = formatted_id.encode_utf16().collect();
     DrawTextW(
         hdc,
         &mut id_val,
         &mut id_val_rect,
-        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE,
     );
 
     // Copy ID Button
@@ -710,7 +716,7 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     draw_button(
         hdc,
         &RECT_BTN_COPY_ID,
-        "COPY",
+        "COPY ID",
         COLOR_CYAN,
         COLOR_YELLOW,
         COLOR_INK,
@@ -718,16 +724,16 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
         font_btn,
     );
 
-    // PIN Section
+    // Label PIN
     SelectObject(hdc, font_label);
     SetTextColor(hdc, COLORREF(COLOR_MUTED));
     let mut pin_lbl_rect = RECT {
         left: 45,
-        top: 188,
-        right: 350,
-        bottom: 204,
+        top: 216,
+        right: 295,
+        bottom: 234,
     };
-    let mut pin_lbl: Vec<u16> = "[PIN] ONE-TIME DYNAMIC ACCESS PIN".encode_utf16().collect();
+    let mut pin_lbl: Vec<u16> = "ONE-TIME ACCESS PIN".encode_utf16().collect();
     DrawTextW(
         hdc,
         &mut pin_lbl,
@@ -735,12 +741,12 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
         DT_LEFT | DT_VCENTER | DT_SINGLELINE,
     );
 
-    // PIN Container Box
+    // PIN Container Box (Flat white, crisp border, zero shadow)
     let pin_box_rect = RECT {
         left: 45,
-        top: 204,
-        right: 405,
-        bottom: 242,
+        top: 238,
+        right: 295,
+        bottom: 282,
     };
     draw_card(hdc, &pin_box_rect, COLOR_PAPER, COLOR_INK, 2, 0, 4);
 
@@ -750,16 +756,16 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     SetTextColor(hdc, COLORREF(COLOR_INK));
     let mut pin_val_rect = RECT {
         left: 55,
-        top: 204,
-        right: 395,
-        bottom: 242,
+        top: 238,
+        right: 285,
+        bottom: 282,
     };
     let mut pin_val: Vec<u16> = formatted_pin.encode_utf16().collect();
     DrawTextW(
         hdc,
         &mut pin_val,
         &mut pin_val_rect,
-        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE,
     );
 
     // New PIN Button
@@ -790,15 +796,15 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
         toggle_hover,
         toggle_fg,
         is_toggle_hover,
-        font_btn,
+        font_btn_action,
     );
 
     // Unattended Access Button
     let is_unattended = state.unattended.read().unwrap().enabled;
     let (unattended_text, unattended_bg, unattended_hover) = if is_unattended {
-        ("UNATTENDED: ON", COLOR_MINT, COLOR_YELLOW)
+        ("UNATTENDED ACCESS: ON", COLOR_MINT, COLOR_YELLOW)
     } else {
-        ("UNATTENDED: OFF", COLOR_WHITE, COLOR_CYAN)
+        ("UNATTENDED ACCESS: OFF", COLOR_WHITE, COLOR_CYAN)
     };
     let is_unattended_hover = state.hover_button == Some(BTN_UNATTENDED);
     draw_button(
@@ -813,25 +819,26 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     );
 
     // ------------------------------------------------------------------------
-    // Right Card: Connect to Remote
+    // 3. Right Card: CONNECT TO REMOTE (CLIENT)
     // ------------------------------------------------------------------------
     let card_remote = RECT {
-        left: 545,
-        top: 85,
-        right: 855,
-        bottom: 310,
+        left: 455,
+        top: 72,
+        right: 865,
+        bottom: 438,
     };
     draw_card(hdc, &card_remote, COLOR_WHITE, COLOR_INK, 3, 4, 6);
 
+    // Header
     SelectObject(hdc, font_card_header);
     SetTextColor(hdc, COLORREF(COLOR_INK));
     let mut rem_header_rect = RECT {
-        left: 565,
-        top: 98,
-        right: 835,
-        bottom: 122,
+        left: 475,
+        top: 86,
+        right: 845,
+        bottom: 110,
     };
-    let mut rem_header: Vec<u16> = "REMOTE CLIENT CONTROL".encode_utf16().collect();
+    let mut rem_header: Vec<u16> = "REMOTE CONTROL (CLIENT)".encode_utf16().collect();
     DrawTextW(
         hdc,
         &mut rem_header,
@@ -839,15 +846,35 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
         DT_LEFT | DT_VCENTER | DT_SINGLELINE,
     );
 
+    // Subtitle
+    SelectObject(hdc, font_card_subtitle);
+    SetTextColor(hdc, COLORREF(COLOR_MUTED));
+    let mut rem_sub_rect = RECT {
+        left: 475,
+        top: 110,
+        right: 845,
+        bottom: 130,
+    };
+    let mut rem_sub: Vec<u16> = "Control a friend's PC by entering their ID & PIN:"
+        .encode_utf16()
+        .collect();
+    DrawTextW(
+        hdc,
+        &mut rem_sub,
+        &mut rem_sub_rect,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+    );
+
+    // Remote ID Label
     SelectObject(hdc, font_label);
     SetTextColor(hdc, COLORREF(COLOR_MUTED));
     let mut rem_id_rect = RECT {
-        left: 565,
-        top: 130,
-        right: 835,
-        bottom: 146,
+        left: 475,
+        top: 140,
+        right: 845,
+        bottom: 158,
     };
-    let mut rem_id_lbl: Vec<u16> = "[TARGET] REMOTE DEVICE ID OR IP".encode_utf16().collect();
+    let mut rem_id_lbl: Vec<u16> = "REMOTE DEVICE ID OR IP".encode_utf16().collect();
     DrawTextW(
         hdc,
         &mut rem_id_lbl,
@@ -855,13 +882,14 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
         DT_LEFT | DT_VCENTER | DT_SINGLELINE,
     );
 
+    // Remote PIN Label
     let mut rem_pin_rect = RECT {
-        left: 565,
-        top: 190,
-        right: 835,
-        bottom: 206,
+        left: 475,
+        top: 216,
+        right: 845,
+        bottom: 234,
     };
-    let mut rem_pin_lbl: Vec<u16> = "[ACCESS PIN] REMOTE ACCESS PIN".encode_utf16().collect();
+    let mut rem_pin_lbl: Vec<u16> = "REMOTE ACCESS PIN".encode_utf16().collect();
     DrawTextW(
         hdc,
         &mut rem_pin_lbl,
@@ -882,157 +910,39 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
         font_btn_lg,
     );
 
+    // Friendly helper tip
+    SelectObject(hdc, font_tip);
+    SetTextColor(hdc, COLORREF(COLOR_MUTED));
+    let mut tip_rect = RECT {
+        left: 475,
+        top: 382,
+        right: 845,
+        bottom: 422,
+    };
+    let mut tip_text: Vec<u16> =
+        "Tip: Ask your partner for their 6-digit Device ID and PIN shown on their VrV Desk screen."
+            .encode_utf16()
+            .collect();
+    DrawTextW(hdc, &mut tip_text, &mut tip_rect, DT_LEFT | DT_WORDBREAK);
+
     // ------------------------------------------------------------------------
-    // 3. Middle Section: Hardware & Engine Status Card
+    // 4. Bottom Security & Performance Strip
     // ------------------------------------------------------------------------
-    let status_card = RECT {
+    let footer_card = RECT {
         left: 25,
-        top: 320,
-        right: 855,
-        bottom: 385,
+        top: 454,
+        right: 865,
+        bottom: 494,
     };
-    draw_card(hdc, &status_card, COLOR_PAPER, COLOR_INK, 2, 3, 4);
+    draw_card(hdc, &footer_card, COLOR_PAPER, COLOR_INK, 2, 0, 4);
 
-    SelectObject(hdc, font_label);
-    SetTextColor(hdc, COLORREF(COLOR_INK));
-    let vdd_status = mirror_core::virtual_display::get_status();
-    let vdd_str = if vdd_status.driver_installed {
-        "WDDM IDD (Installed & Ready)"
-    } else if vdd_status.is_headless {
-        "Headless Canvas (Active)"
-    } else {
-        "Headless Canvas (Fallback Ready)"
-    };
-    let mut stats: Vec<u16> = format!(
-        "CAPTURE: DXGI Desktop Duplication (GPU Direct)  •  VIDEO: MFT Hardware H.264 Encoder (Zero-Copy)\nDISPLAY: {}  •  AUDIO: WASAPI 48kHz Stereo Opus Low-Latency",
-        vdd_str
-    ).encode_utf16().collect();
-    let mut stats_rect = RECT {
-        left: 45,
-        top: 332,
-        right: 835,
-        bottom: 375,
-    };
-    DrawTextW(hdc, &mut stats, &mut stats_rect, DT_LEFT | DT_WORDBREAK);
-
-    // ------------------------------------------------------------------------
-    // 4. Bottom Section: Live Telemetry & Log Console
-    // ------------------------------------------------------------------------
-    let log_card = RECT {
-        left: 25,
-        top: 395,
-        right: 855,
-        bottom: 585,
-    };
-    draw_card(hdc, &log_card, COLOR_WHITE, COLOR_INK, 3, 4, 6);
-
-    SelectObject(hdc, font_card_header);
-    SetTextColor(hdc, COLORREF(COLOR_INK));
-    let mut log_header_rect = RECT {
-        left: 45,
-        top: 407,
-        right: 340,
-        bottom: 429,
-    };
-    let mut log_header: Vec<u16> = "SESSION TELEMETRY & LOGS".encode_utf16().collect();
-    DrawTextW(
-        hdc,
-        &mut log_header,
-        &mut log_header_rect,
-        DT_LEFT | DT_VCENTER | DT_SINGLELINE,
-    );
-
-    // Telemetry Metrics Badge
-    let fps = state.telemetry.fps.load(Ordering::Relaxed);
-    let kbps = state.telemetry.bitrate_kbps.load(Ordering::Relaxed);
-    let sent = state.telemetry.frames_sent.load(Ordering::Relaxed);
-    let skipped = state.telemetry.frames_skipped.load(Ordering::Relaxed);
-
-    SelectObject(hdc, font_label);
-    SetTextColor(hdc, COLORREF(COLOR_INK));
-    let mut metrics_str: Vec<u16> = format!(
-        "FPS: {}  •  {:.1} Mbps  •  Sent: {}  •  Skipped: {}",
-        fps,
-        kbps as f32 / 1000.0,
-        sent,
-        skipped
-    )
-    .encode_utf16()
-    .collect();
-    let mut metrics_rect = RECT {
-        left: 350,
-        top: 407,
-        right: 735,
-        bottom: 429,
-    };
-    DrawTextW(
-        hdc,
-        &mut metrics_str,
-        &mut metrics_rect,
-        DT_RIGHT | DT_VCENTER | DT_SINGLELINE,
-    );
-
-    // Clear Log button
-    let is_clear_hover = state.hover_button == Some(BTN_CLEAR_LOG);
-    draw_button(
-        hdc,
-        &RECT_BTN_CLEAR_LOG,
-        "CLEAR",
-        COLOR_WHITE,
-        COLOR_PINK,
-        COLOR_INK,
-        is_clear_hover,
-        font_btn,
-    );
-
-    // Console Box: Ink background, crisp 2px ink border, zero shadow, mint text
-    let console_rect = RECT {
-        left: 45,
-        top: 435,
-        right: 835,
-        bottom: 570,
-    };
-    draw_card(hdc, &console_rect, COLOR_CONSOLE_BG, COLOR_INK, 2, 0, 4);
-
-    if let Ok(logs) = state.telemetry.log_messages.read() {
-        let display_lines: Vec<&String> = logs.iter().rev().take(6).collect();
-        SelectObject(hdc, font_console);
-        SetTextColor(hdc, COLORREF(COLOR_MINT));
-
-        let mut y_offset = 442;
-        for line in display_lines.iter().rev() {
-            let mut line_w: Vec<u16> = format!("> {}", line).encode_utf16().collect();
-            let mut line_rect = RECT {
-                left: 55,
-                top: y_offset,
-                right: 825,
-                bottom: y_offset + 18,
-            };
-            DrawTextW(
-                hdc,
-                &mut line_w,
-                &mut line_rect,
-                DT_LEFT | DT_VCENTER | DT_SINGLELINE,
-            );
-            y_offset += 20;
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // 5. Footer
-    // ------------------------------------------------------------------------
     SelectObject(hdc, font_footer);
     SetTextColor(hdc, COLORREF(COLOR_MUTED));
     let mut footer_str: Vec<u16> =
-        "VrV Desk v0.14.0 • ChaCha20-Poly1305 E2EE • Zero-Config LAN Multicast • Windows x64 Native GDI"
+        "VrV Desk v0.14.0  •  ChaCha20-Poly1305 E2EE  •  Direct GPU Duplication 120 FPS  •  Zero Setup LAN Multicast"
             .encode_utf16()
             .collect();
-    let mut footer_rect = RECT {
-        left: 25,
-        top: 595,
-        right: 855,
-        bottom: 615,
-    };
+    let mut footer_rect = footer_card;
     DrawTextW(
         hdc,
         &mut footer_str,
@@ -1046,12 +956,14 @@ unsafe fn render_gui(hdc: HDC, _width: i32, _height: i32, state: &AppState) {
     DeleteObject(font_badge);
     DeleteObject(font_subtitle);
     DeleteObject(font_card_header);
+    DeleteObject(font_card_subtitle);
     DeleteObject(font_label);
     DeleteObject(font_giant_id);
     DeleteObject(font_giant_pin);
     DeleteObject(font_btn);
+    DeleteObject(font_btn_action);
     DeleteObject(font_btn_lg);
-    DeleteObject(font_console);
+    DeleteObject(font_tip);
     DeleteObject(font_footer);
 }
 
@@ -1132,15 +1044,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Center on screen
         let screen_w = GetSystemMetrics(SM_CXSCREEN);
         let screen_h = GetSystemMetrics(SM_CYSCREEN);
-        let win_w = 890;
-        let win_h = 670;
+        let win_w = 900;
+        let win_h = 560;
         let x = (screen_w - win_w) / 2;
         let y = (screen_h - win_h) / 2;
 
         let hwnd = CreateWindowExW(
             WINDOW_EX_STYLE(0),
             class_name,
-            w!("VrV Desk — Remote Desktop & Screen Mirror"),
+            w!("VrV Desk — Remote Desktop"),
             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
             x,
             y,
